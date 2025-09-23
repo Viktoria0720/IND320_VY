@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+#import pandas as pd
 import matplotlib.pyplot as plt
 
 # ------------------------------
@@ -7,7 +7,13 @@ import matplotlib.pyplot as plt
 # ------------------------------
 @st.cache_data
 def load_data():
-    return pd.read_csv("open-meteo-subset.csv", parse_dates=['Date'])
+    data_list= []
+    with open("open-meteo-subset.csv", "r") as infile:
+        for line in infile:
+            split_lines= line.split(",")
+            data_list.append(split_lines)
+    #return read_csv("open-meteo-subset.csv", parse_dates=['Date'])
+    return data_list
 
 df = load_data()
 numeric_columns = df.columns[1:]  # all except Date
@@ -32,7 +38,7 @@ if page == "Home":
         """,
         unsafe_allow_html=True
     )
-
+""" 
 # ------------------------------
 # Page 2: Data Table with Mini Charts
 # ------------------------------
@@ -88,24 +94,25 @@ elif page == "Motivation":
     st.title("Motivation")
     st.markdown(
         """
-        <style>
-        .full-page {
-            background-color: #1E90FF;
-            color: white;
-            height: 80vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 3rem;
-            text-align: center;
-            border-radius: 10px;
-            padding: 20px;
-        }
-        </style>
-        <div class="full-page">
-            Keep calm and don't give up on coding.<br>
-            More pages are coming soon!
-        </div>
+        #<style>
+       # .full-page {
+        #    background-color: #1E90FF;
+       #     color: white;
+       #     height: 80vh;
+       #     display: flex;
+      #      justify-content: center;
+       #     align-items: center;
+       #     font-size: 3rem;
+       #     text-align: center;
+       #     border-radius: 10px;
+       #     padding: 20px;
+      #  }
+      #  </style>
+      #  <div class="full-page">
+      #      Keep calm and don't give up on coding.<br>
+      #      More pages are coming soon!
+      #  </div>
         """,
         unsafe_allow_html=True
     )
+ """
