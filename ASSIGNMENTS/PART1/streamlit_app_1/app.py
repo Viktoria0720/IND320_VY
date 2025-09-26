@@ -99,7 +99,7 @@ elif page == "To be continued":
     from PIL import Image
 
 # Open the image with PIL
-    img = Image.open("page4.jpg")
+    img = Image.open(file_path = os.path.join(os.path.dirname(__file__), "page4.jpg"))
    # Display an image
     st.image(
         img, 
