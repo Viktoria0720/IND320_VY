@@ -10,7 +10,7 @@ import os
 @st.cache_data
 def load_data():
     file_path = os.path.join(os.path.dirname(__file__), "open-meteo-subset.csv")
-    df = pd.read_csv(file_path, parse_dates=["Date"])
+    df = pd.read_csv(file_path, parse_dates=["time"])
     return df
 
 df = load_data()
