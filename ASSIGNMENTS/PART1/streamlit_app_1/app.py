@@ -35,16 +35,19 @@ elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
-     # Transpose the dataframe: rows become columns and columns become rows
+    # Transpose the dataframe: rows become columns and columns become rows
     df_t = df.transpose().reset_index()
     
     # The first row (after transpose) now contains the time values (original first column)
     time_headers = df.iloc[:, 0].astype(str).tolist()  # Convert datetime to string for headers
     
+    # Drop the first column (time) from transposed df for plotting
+    df_t = df_t.drop(df_t.index[0])  # Remove the first row which corresponds to time
+    
     # Create column names: "Variable" + time values
     df_t.columns = ["Variable"] + time_headers
     
-    # Loop over each row (original column) to display a sparkline
+    # Loop over each row (original column, except time) to display a sparkline
     for _, row in df_t.iterrows():
         variable = row["Variable"]   # Get the column name
         values = row[1:]             # Skip the "Variable" column; these are the data values
