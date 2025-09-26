@@ -30,44 +30,32 @@ if page == "Home":
     st.write("Buckle up, the most fascinating app is about to be opened!")
 
 # -------------------------------
-# PAGE 2: DATA TABLE + LINECHARTCOLUMN
+# PAGE 2: DATA TABLE + SPARKLINES (placeholder)
 # -------------------------------
 elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
- # Extract first month of data
-# -------------------------------
-first_month = df['time'].dt.month.min()  # get the first month number
-df_first_month = df[df['time'].dt.month == first_month]
+    # Extract first month of data
+    first_month = df['time'].dt.month.min()
+    df_first_month = df[df['time'].dt.month == first_month]
 
-# -------------------------------
-# Prepare table data
-# -------------------------------
-table_data = []
+    # Prepare table data
+    table_data = []
+    columns_to_plot = df_first_month.columns[1:]  # skip time column
 
-# Exclude the first column (time) from sparklines
-columns_to_plot = df_first_month.columns[1:]
+    for col in columns_to_plot:
+        values = df_first_month[col].values
+        row = [
+            col,
+            "LineChartPlaceholder"  # pretend mini-chart
+        ]
+        table_data.append(row)
 
-for col in columns_to_plot:
-    values = df_first_month[col].values
-    
-    # Row has the variable name and a sparkline chart
-    row = [
-        col,  # use column name as label
-        line_chart_column(values, width=300, height=50)  # pretend mini-chart
-    ]
-    table_data.append(row)
+    # Convert to DataFrame for display
+    table_df = pd.DataFrame(table_data, columns=["Variable", "First Month Trend"])
+    st.dataframe(table_df, use_container_width=True)
 
-# -------------------------------
-# Convert to DataFrame for display
-# -------------------------------
-table_df = pd.DataFrame(table_data, columns=["Variable", "First Month Trend"])
-
-# -------------------------------
-# Display the table in Streamlit
-# -------------------------------
-st.dataframe(table_df, use_container_width=True)
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
@@ -80,9 +68,7 @@ elif page == "Plots":
 
     # Slider to select months
     months = sorted(df["time"].dt.to_period("M").unique())
-    month_selected = st.select_slider(
-        "Select a month", options=months, value=months[0]
-    )
+    month_selected = st.select_slider("Select a month", options=months, value=months[0])
 
     # Filter data by chosen month
     month_df = df[df["time"].dt.to_period("M") == month_selected]
@@ -105,7 +91,7 @@ elif page == "Plots":
 # -------------------------------
 # PAGE 4: DUMMY PAGE
 # -------------------------------
-elif page == "Page 4":
+elif page == "To be continued":
     st.title("Keep Calm and Don’t Give Up on Coding 💻")
     st.markdown(
         "<div style='background-color:blue; color:white; font-size:40px; "
