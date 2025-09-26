@@ -35,13 +35,14 @@ elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
-    # Transpose the dataframe: rows become columns and columns become rows
+     # Transpose the dataframe: rows become columns and columns become rows
     df_t = df.transpose().reset_index()
     
-    # Create column names: "Variable" for original column name, and "Record 1, Record 2, ..."
-    # [f"Record {i}" for i in range(1, df_t.shape[1])] generates a list like ["Record 1", "Record 2", ...]
-    # df_t.shape[1] is the number of columns after transposing
-    df_t.columns = ["Variable"] + [f"Record {i}" for i in range(1, df_t.shape[1])]
+    # The first row (after transpose) now contains the time values (original first column)
+    time_headers = df.iloc[:, 0].astype(str).tolist()  # Convert datetime to string for headers
+    
+    # Create column names: "Variable" + time values
+    df_t.columns = ["Variable"] + time_headers
     
     # Loop over each row (original column) to display a sparkline
     for _, row in df_t.iterrows():
@@ -52,7 +53,7 @@ elif page == "Data Table":
         st.write(f"### {variable}")
         
         # Create a tiny DataFrame for st.line_chart
-        chart_df = pd.DataFrame({"Value": values})
+        chart_df = pd.DataFrame({"Value": values}, index=time_headers)
         st.line_chart(chart_df, use_container_width=True)  # Show sparkline
 
 # -------------------------------
