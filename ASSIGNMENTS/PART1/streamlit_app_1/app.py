@@ -36,26 +36,23 @@ elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
+    # -------------------------------
     # Extract first month of data
+    # -------------------------------
     first_month = df['time'].dt.month.min()
     df_first_month = df[df['time'].dt.month == first_month]
 
-    # Prepare table data
-    table_data = []
-    columns_to_plot = df_first_month.columns[1:]  # skip time column
+    # -------------------------------
+    # Display row-wise sparklines
+    # -------------------------------
+    for col in df_first_month.columns:
+        if col == "time":
+            continue  # skip time column for sparkline
 
-    for col in columns_to_plot:
-        values = df_first_month[col].values
-        row = [
-            col,
-            "LineChartPlaceholder"  # pretend mini-chart
-        ]
-        table_data.append(row)
+        st.write(f"**{col}**")  # row label
 
-    # Convert to DataFrame for display
-    table_df = pd.DataFrame(table_data, columns=["Variable", "First Month Trend"])
-    st.dataframe(table_df, use_container_width=True)
-
+        # Create a small chart for this variable
+        st.line_chart(df_first_month[[col]], height=50)  # mini sparkline
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
