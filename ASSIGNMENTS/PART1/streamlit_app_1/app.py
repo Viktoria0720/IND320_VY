@@ -39,20 +39,35 @@ elif page == "Data Table":
     # -------------------------------
     # Extract first month of data
     # -------------------------------
-    first_month = df['time'].dt.month.min()
+    first_month = df['time'].dt.month.min()  # get the first month number
     df_first_month = df[df['time'].dt.month == first_month]
 
     # -------------------------------
-    # Display row-wise sparklines
+    # Prepare table data
     # -------------------------------
-    for col in df_first_month.columns:
-        if col == "time":
-            continue  # skip time column for sparkline
+    table_data = []
 
-        st.write(f"**{col}**")  # row label
+    # Loop over each column except 'time'
+    columns_to_plot = df_first_month.columns[1:]  # exclude time column
 
-        # Create a small chart for this variable
-        st.line_chart(df_first_month[[col]], height=50)  # mini sparkline
+    for col in columns_to_plot:
+        values = df_first_month[col].values
+        # Each row contains the variable name and a mini sparkline
+        row = [
+            col,  # variable name
+            line_chart_column(values, width=300, height=50)  # hypothetical mini-chart
+        ]
+        table_data.append(row)
+
+    # -------------------------------
+    # Convert to DataFrame for display
+    # -------------------------------
+    table_df = pd.DataFrame(table_data, columns=["Variable", "First Month Trend"])
+
+    # -------------------------------
+    # Display the table
+    # -------------------------------
+    st.dataframe(table_df, use_container_width=True)
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
