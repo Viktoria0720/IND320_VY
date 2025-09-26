@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from streamlit.elements import line_chart_column  
 
 # -------------------------------
 # CACHE THE DATA LOADING FUNCTION
@@ -35,33 +36,38 @@ elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
-    # Get the first month of data
-    first_month = df['time'].dt.month.min()
-    df_first_month = df[df['time'].dt.month == first_month]
+ # Extract first month of data
+# -------------------------------
+first_month = df['time'].dt.month.min()  # get the first month number
+df_first_month = df[df['time'].dt.month == first_month]
 
-    # Extract the time values (first column)
-    time_values = df_first_month['time'].dt.strftime('%Y-%m-%d').tolist()
+# -------------------------------
+# Prepare table data
+# -------------------------------
+table_data = []
 
-    # Prepare a table: one row per variable, columns = time points
-    table_data = {}
+# Exclude the first column (time) from sparklines
+columns_to_plot = df_first_month.columns[1:]
 
-    # Loop through all numeric columns (skip 'time')
-    for col in df_first_month.columns[1:]:
-        table_data[col] = df_first_month[col].tolist()  # Add data values as row
-
-    # Convert to DataFrame for display
-    table_df = pd.DataFrame(table_data, index=time_values).transpose()
-    table_df.index.name = 'Variable'
+for col in columns_to_plot:
+    values = df_first_month[col].values
     
-    # Display the table
-    st.dataframe(table_df, use_container_width=True)
-    
-    # Optionally: show tiny sparklines using st.line_chart for each variable
-    st.markdown("### Sparklines for the first month")
-    for col in df_first_month.columns[1:]:
-        st.write(f"**{col}**")
-        spark_df = pd.DataFrame({'Value': df_first_month[col].values}, index=time_values)
-        st.line_chart(spark_df, use_container_width=True, height=100)  # small inline chart
+    # Row has the variable name and a sparkline chart
+    row = [
+        col,  # use column name as label
+        line_chart_column(values, width=300, height=50)  # pretend mini-chart
+    ]
+    table_data.append(row)
+
+# -------------------------------
+# Convert to DataFrame for display
+# -------------------------------
+table_df = pd.DataFrame(table_data, columns=["Variable", "First Month Trend"])
+
+# -------------------------------
+# Display the table in Streamlit
+# -------------------------------
+st.dataframe(table_df, use_container_width=True)
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
