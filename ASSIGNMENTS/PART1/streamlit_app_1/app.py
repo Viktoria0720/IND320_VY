@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 # -------------------------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("open-meteo-subset.csv", parse_dates=["Date"])
+    file_path = os.path.join(os.path.dirname(__file__), "open-meteo-subset.csv")
+    df = pd.read_csv(file_path, parse_dates=["Date"])
     return df
 
 df = load_data()
