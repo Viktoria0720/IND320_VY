@@ -38,12 +38,6 @@ if st.button("Press me!"):
         unsafe_allow_html=True
     )
 
-<<<<<<< HEAD
 # Add a slider with a range from 0 to 100 in increments of 2, starting at 50
 slider_num = st.slider("Select a value", 0, 100, value=40, step=2)
 st.write("Slider value:", slider_num)
-=======
-# Add a slider with a range from 0 to 100 in increments of 2, starting at 40
-slider_num = st.slider("Select a value", 0, 100, value=40, step=5)
-st.write("Slider value:", slider_num)
->>>>>>> 6ac9a6970f78ab531c51e81451e524657974939d
