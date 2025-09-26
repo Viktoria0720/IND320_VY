@@ -96,21 +96,10 @@ elif page == "Plots":
 # -------------------------------
 elif page == "To be continued":
     st.title("Keep Calm and Don’t Give Up on Coding 💻")
-    from PIL import Image
-
-# Open the image with PIL
-    img = Image.open(file_path = os.path.join(os.path.dirname(__file__), "page4.jpg"))
-   # Display an image
-    st.image(
-        img, 
-        caption="Keep calm and code on!",
-        use_column_width=True
-    )
-
     st.markdown(
-        "<div style='background-color:red; color:white; font-size:20px; "
-        "text-align:center; padding:20px;'>"
-        "More pages are coming soon!"
+        "<div style='background-color:red; color:white; font-size:40px; "
+        "text-align:center; padding:50px;'>"
+        "Keep calm and don’t give up on coding. More pages are coming soon!"
         "</div>",
         unsafe_allow_html=True,
     )
