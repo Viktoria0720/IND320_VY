@@ -19,7 +19,7 @@ df = load_data()
 # SIDEBAR NAVIGATION
 # -------------------------------
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Home", "Data Table", "Plots", "Page 4"])
+page = st.sidebar.radio("Go to", ["Home", "Data Table", "Plots", "To be continued"])
 
 # -------------------------------
 # PAGE 1: HOME
@@ -35,21 +35,25 @@ elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
-    # Subset to the first month
-    first_month = df[df["time"].dt.month == df["time"].dt.month.min()]
-
-    # Build a table: one row per column
-    # Each row has a sparkline (LineChartColumn)
-    import streamlit.components.v1 as components  # fallback if needed
-    from streamlit.elements import line_chart_column  # newer Streamlit API
-
-    # Create row-wise table using Streamlit's dataframe API
-    # Each row = column of original data
-    with st.container():
-        for col in df.columns:
-            if col != "time":
-                st.write(f"### {col}")
-                st.line_chart(first_month.set_index("time")[col])
+    # Transpose the dataframe: rows become columns and columns become rows
+    df_t = df.transpose().reset_index()
+    
+    # Create column names: "Variable" for original column name, and "Record 1, Record 2, ..."
+    # [f"Record {i}" for i in range(1, df_t.shape[1])] generates a list like ["Record 1", "Record 2", ...]
+    # df_t.shape[1] is the number of columns after transposing
+    df_t.columns = ["Variable"] + [f"Record {i}" for i in range(1, df_t.shape[1])]
+    
+    # Loop over each row (original column) to display a sparkline
+    for _, row in df_t.iterrows():
+        variable = row["Variable"]   # Get the column name
+        values = row[1:]             # Skip the "Variable" column; these are the data values
+        
+        # Display the column name
+        st.write(f"### {variable}")
+        
+        # Create a tiny DataFrame for st.line_chart
+        chart_df = pd.DataFrame({"Value": values})
+        st.line_chart(chart_df, use_container_width=True)  # Show sparkline
 
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
