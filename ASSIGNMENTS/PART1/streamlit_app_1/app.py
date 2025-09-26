@@ -36,7 +36,7 @@ elif page == "Data Table":
     st.write("Here is the first month of the dataset shown row-wise.")
 
     # Subset to the first month
-    first_month = df[df["time].dt.month == df["time"].dt.month.min()]
+    first_month = df[df["time"].dt.month == df["time"].dt.month.min()]
 
     # Build a table: one row per column
     # Each row has a sparkline (LineChartColumn)
