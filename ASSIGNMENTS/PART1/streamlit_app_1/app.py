@@ -39,35 +39,26 @@ elif page == "Data Table":
     # -------------------------------
     # Extract first month of data
     # -------------------------------
-    first_month = df['time'].dt.month.min()  # get the first month number
+    first_month = df['time'].dt.month.min()
     df_first_month = df[df['time'].dt.month == first_month]
 
     # -------------------------------
-    # Prepare table data
+    # Create table header
     # -------------------------------
-    table_data = []
-
-    # Loop over each column except 'time'
-    columns_to_plot = df_first_month.columns[1:]  # exclude time column
-
-    for col in columns_to_plot:
-        values = df_first_month[col].values
-        # Each row contains the variable name and a mini sparkline
-        row = [
-            col,  # variable name
-            line_chart_column(values, width=300, height=50)  # hypothetical mini-chart
-        ]
-        table_data.append(row)
+    col1, col2 = st.columns([1, 3])
+    col1.write("**Variable**")
+    col2.write("**First Month Trend**")
 
     # -------------------------------
-    # Convert to DataFrame for display
+    # Fill table row by row
     # -------------------------------
-    table_df = pd.DataFrame(table_data, columns=["Variable", "First Month Trend"])
-
-    # -------------------------------
-    # Display the table
-    # -------------------------------
-    st.dataframe(table_df, use_container_width=True)
+    for col_name in df_first_month.columns:
+        if col_name == "time":
+            continue  # skip time column
+        col_left, col_right = st.columns([1, 3])
+        col_left.write(col_name)
+        # Mini sparkline chart
+        col_right.line_chart(df_first_month[[col_name]], height=50)
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
