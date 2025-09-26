@@ -35,30 +35,33 @@ elif page == "Data Table":
     st.title("Weather Data Table")
     st.write("Here is the first month of the dataset shown row-wise.")
 
-    # Transpose the dataframe: rows become columns and columns become rows
-    df_t = df.transpose().reset_index()
-    
-    # The first row (after transpose) now contains the time values (original first column)
-    time_headers = df.iloc[:, 0].astype(str).tolist()  # Convert datetime to string for headers
-    
-    # Drop the first column (time) from transposed df for plotting
-    df_t = df_t.drop(df_t.index[0])  # Remove the first row which corresponds to time
-    
-    # Create column names: "Variable" + time values
-    df_t.columns = ["Variable"] + time_headers
-    
-    # Loop over each row (original column, except time) to display a sparkline
-    for _, row in df_t.iterrows():
-        variable = row["Variable"]   # Get the column name
-        values = row[1:]             # Skip the "Variable" column; these are the data values
-        
-        # Display the column name
-        st.write(f"### {variable}")
-        
-        # Create a tiny DataFrame for st.line_chart
-        chart_df = pd.DataFrame({"Value": values}, index=time_headers)
-        st.line_chart(chart_df, use_container_width=True)  # Show sparkline
+    # Get the first month of data
+    first_month = df['time'].dt.month.min()
+    df_first_month = df[df['time'].dt.month == first_month]
 
+    # Extract the time values (first column)
+    time_values = df_first_month['time'].dt.strftime('%Y-%m-%d').tolist()
+
+    # Prepare a table: one row per variable, columns = time points
+    table_data = {}
+
+    # Loop through all numeric columns (skip 'time')
+    for col in df_first_month.columns[1:]:
+        table_data[col] = df_first_month[col].tolist()  # Add data values as row
+
+    # Convert to DataFrame for display
+    table_df = pd.DataFrame(table_data, index=time_values).transpose()
+    table_df.index.name = 'Variable'
+    
+    # Display the table
+    st.dataframe(table_df, use_container_width=True)
+    
+    # Optionally: show tiny sparklines using st.line_chart for each variable
+    st.markdown("### Sparklines for the first month")
+    for col in df_first_month.columns[1:]:
+        st.write(f"**{col}**")
+        spark_df = pd.DataFrame({'Value': df_first_month[col].values}, index=time_values)
+        st.line_chart(spark_df, use_container_width=True, height=100)  # small inline chart
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
