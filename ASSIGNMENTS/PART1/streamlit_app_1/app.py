@@ -60,7 +60,7 @@ elif page == "Data Table":
                 y_max=int(data.max().max())
             )
         },
-        hide_index=True
+        hide_index=True,
         use_container_width=True
     )
 
