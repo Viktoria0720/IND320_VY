@@ -58,7 +58,7 @@ elif page == "Data Table":
                 "First Month Series",
                 y_min=int(data.min().min()),
                 y_max=int(data.max().max()),
-                width="medium"
+                width="large"
             )
         },
         hide_index=True,
