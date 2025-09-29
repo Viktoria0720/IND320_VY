@@ -66,6 +66,29 @@ elif page == "Data Table":
         use_container_width=True
     )
 
+    # -------------------------------
+    # Extract first month of data
+    # -------------------------------
+    first_month = df['time'].dt.month.min()
+    df_first_month = df[df['time'].dt.month == first_month]
+
+    # -------------------------------
+    # Create table header
+    # -------------------------------
+    col1, col2 = st.columns([1, 3])
+    col1.write("**Variable**")
+    col2.write("**First Month Trend**")
+
+    # -------------------------------
+    # Fill table row by row
+    # -------------------------------
+    for col_name in df_first_month.columns:
+        if col_name == "time":
+            continue  # skip time column
+        col_left, col_right = st.columns([1, 3])
+        col_left.write(col_name)
+        # Mini sparkline chart
+        col_right.line_chart(df_first_month[[col_name]], height=50)
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
