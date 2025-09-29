@@ -57,11 +57,12 @@ elif page == "Data Table":
             "Trend": st.column_config.LineChartColumn(
                 "First Month Series",
                 y_min=int(data.min().min()),
-                y_max=int(data.max().max())
+                y_max=int(data.max().max()),
+                width="medium"
             )
         },
         hide_index=True,
-        height=700,
+       # height=700,
         use_container_width=True
     )
 
