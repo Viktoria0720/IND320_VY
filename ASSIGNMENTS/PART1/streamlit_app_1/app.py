@@ -1,4 +1,8 @@
-# app.py
+"""
+Created on Wed Sep  24 10:58:08 2023
+
+@author: viyav
+"""
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -30,35 +34,35 @@ if page == "Home":
     st.write("Buckle up, the most fascinating app is about to be opened!")
 
 # -------------------------------
-# PAGE 2: DATA TABLE + SPARKLINES (placeholder)
+# PAGE 2: DATA TABLE + SPARKLINES
 # -------------------------------
 elif page == "Data Table":
     st.title("Weather Data Table")
-    st.write("Here is the first month of the dataset shown row-wise.")
+    st.write("First month of the dataset, row-wise sparklines per variable:")
 
-    # -------------------------------
-    # Extract first month of data
-    # -------------------------------
-    first_month = df['time'].dt.month.min()
-    df_first_month = df[df['time'].dt.month == first_month]
+    months = df.iloc[:, 0]
+    data = df.iloc[:, 1:]
 
-    # -------------------------------
-    # Create table header
-    # -------------------------------
-    col1, col2 = st.columns([1, 3])
-    col1.write("**Variable**")
-    col2.write("**First Month Trend**")
+    # Create a reshaped DataFrame: one row per variable, with data series
+    reshaped = pd.DataFrame({
+        "Variable": data.columns,
+        "Trend": [data[col].tolist() for col in data.columns]
+    })
 
-    # -------------------------------
-    # Fill table row by row
-    # -------------------------------
-    for col_name in df_first_month.columns:
-        if col_name == "time":
-            continue  # skip time column
-        col_left, col_right = st.columns([1, 3])
-        col_left.write(col_name)
-        # Mini sparkline chart
-        col_right.line_chart(df_first_month[[col_name]], height=50)
+    # Show dataframe with LineChartColumn
+    st.dataframe(
+        reshaped,
+        column_config={
+            "Variable": st.column_config.TextColumn("Variable"),
+            "Trend": st.column_config.LineChartColumn(
+                "First Month Series",
+                y_min=int(data.min().min()),
+                y_max=int(data.max().max())
+            )
+        },
+        hide_index=True
+    )
+
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
