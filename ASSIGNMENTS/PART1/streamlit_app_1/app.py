@@ -83,7 +83,7 @@ elif page == "Data Table":
         col_left, col_right = st.columns([1, 3])
         col_left.write(col_name)
         # Mini sparkline chart
-        col_right.line_chart(df_first_month[[col_name]], height=200)
+        col_right.line_chart(df_first_month.set_index("time")[[col_name]], height=200)
 # -------------------------------
 # PAGE 3: PLOTS + FILTERS
 # -------------------------------
