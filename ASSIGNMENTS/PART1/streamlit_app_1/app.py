@@ -61,6 +61,7 @@ elif page == "Data Table":
             )
         },
         hide_index=True,
+        height=700,
         use_container_width=True
     )
 
