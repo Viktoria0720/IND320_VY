@@ -115,7 +115,7 @@ def _list_year_months(area: str):
         {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}}
     ]
 
-    rows = list(coll_name.aggregate(pipeline))
+    rows = list(coll.aggregate(pipeline))
     # Return ["YYYY-MM", ...]
     return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
 
