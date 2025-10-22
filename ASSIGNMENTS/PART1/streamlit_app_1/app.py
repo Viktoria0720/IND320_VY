@@ -80,17 +80,43 @@ def _list_groups(price_area: str | None = None) -> List[str]:
     return sorted([g for g in groups if g])
 
 @st.cache_data(show_spinner=False)
-def _list_year_months(price_area: str | None = None) -> List[Tuple[int, int]]:
-    coll = _get_mongo_collection()
-    match = {"priceArea": price_area} if price_area else {}
+def _list_year_months(area: str):
+    from pymongo import ASCENDING
+
+    # Build a robust coercion for string or date types
     pipeline = [
-        {"$match": match},
-        {"$project": {"_id": 0, "y": {"$year": "$startTime"}, "m": {"$month": "$startTime"}}},
-        {"$group": {"_id": {"y": "$y", "m": "$m"}}},
+        {"$match": {"area": area}},
+        {"$addFields": {
+            # If time is already a Date, keep it; else try to parse
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$time"}, "date"]},
+                    "$time",
+                    {
+                        "$dateFromString": {
+                            "dateString": "$time",
+                            # If your strings are ISO-8601, this works without format
+                            # Add a format if you imported as custom strings, e.g. "%Y-%m-%dT%H:%M:%SZ"
+                            "onError": None,
+                            "onNull": None
+                        }
+                    }
+                ]
+            }
+        }},
+        # Filter out rows we couldn't parse
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$group": {
+            "_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}},
+            "n": {"$sum": 1}
+        }},
+        {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}}
     ]
+
     rows = list(coll.aggregate(pipeline))
-    ym = sorted([(r["_id"]["y"], r["_id"]["m"]) for r in rows if r.get("_id")])
-    return ym
+    # Return ["YYYY-MM", ...]
+    return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
+
 
 @st.cache_data(show_spinner=True)
 def _totals_for_area(price_area: str) -> pd.DataFrame:
