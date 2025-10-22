@@ -24,6 +24,11 @@ except Exception:
     except Exception:
         px = None
 
+st.set_page_config(
+    page_title="My App",
+    layout="wide",                      # <<< makes the content area wide
+    initial_sidebar_state="expanded"    # optional
+)
 # ===============================
 # common data from CSV
 # ===============================
