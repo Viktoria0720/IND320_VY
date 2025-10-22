@@ -316,24 +316,30 @@ elif page == "Plots":
 elif page == "Elhub (Mongo)":
     st.title("Elhub – Production per Group (MongoDB)")
 
-    # sanity checks
-    if not _mongo_available():
+    # --- Live connection probe (surface config/connection issues early)
+    try:
+        _ = _get_mongo_collection().estimated_document_count()
+    except Exception as e:
         st.error(
-            "MongoDB secrets not found. Add `.streamlit/secrets.toml` with:\n\n"
-            "[mongo]\nuri = \"...\"\ndb = \"energy\"\ncollection = \"elhub_production_2021\""
+            "Could not connect to MongoDB. Check your `.streamlit/secrets.toml` "
+            "([mongo] uri/db/collection) and your Atlas Network Access/IP allow list."
         )
+        st.exception(e)
         st.stop()
 
     try:
         # Layout
         left, right = st.columns(2, gap="large")
 
+        # ---------- LEFT: Distribution pie ----------
         with left:
             st.subheader("Distribution by Production Group")
+
             areas = _list_price_areas()
             if not areas:
                 st.warning("No price areas found in the database.")
                 st.stop()
+
             area = st.radio("Select price area", areas, index=0, horizontal=True)
 
             pie_df = _totals_for_area(area)
@@ -349,7 +355,7 @@ elif page == "Elhub (Mongo)":
                             color=alt.Color("productionGroup:N", legend=alt.Legend(title="Group")),
                             tooltip=[
                                 "productionGroup",
-                                alt.Tooltip("quantityKwh:Q", format=",.0f", title="kWh")
+                                alt.Tooltip("quantityKwh:Q", format=",.0f", title="kWh"),
                             ],
                         )
                         .properties(height=360)
@@ -359,31 +365,33 @@ elif page == "Elhub (Mongo)":
                     fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.dataframe(pie_df)
+                    st.dataframe(pie_df, use_container_width=True)
 
+        # ---------- RIGHT: Monthly trend ----------
         with right:
             st.subheader("Monthly Trend")
+
             groups_all = _list_groups(area)
             if hasattr(st, "pills"):
                 selected_groups = st.pills(
                     "Production groups",
                     options=groups_all,
                     selection_mode="multi",
-                    default=groups_all[:3] if len(groups_all) > 3 else groups_all
+                    default=groups_all[:3] if len(groups_all) > 3 else groups_all,
                 )
             else:
                 selected_groups = st.multiselect(
                     "Production groups",
                     options=groups_all,
-                    default=groups_all[:3] if len(groups_all) > 3 else groups_all
+                    default=groups_all[:3] if len(groups_all) > 3 else groups_all,
                 )
 
-            ym = _list_year_months(area)
-            if not ym:
+            # Updated helper returns ["YYYY-MM", ...]
+            ym_list = _list_year_months(area)
+            if not ym_list:
                 st.info("No months found for the selected area.")
             else:
-                labels = [f"{y}-{m:02d}" for y, m in ym]
-                label = st.selectbox("Month", labels, index=0)
+                label = st.selectbox("Month", ym_list, index=0)
                 y_sel, m_sel = map(int, label.split("-"))
 
                 trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)
@@ -409,9 +417,7 @@ elif page == "Elhub (Mongo)":
                         )
                         st.altair_chart(line, use_container_width=True)
                     elif px is not None:
-                        fig2 = px.line(
-                            trend_df, x="date", y="quantityKwh", color="productionGroup"
-                        )
+                        fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
                         fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
                         st.plotly_chart(fig2, use_container_width=True)
                     else:
@@ -422,7 +428,7 @@ elif page == "Elhub (Mongo)":
         with st.expander("Data source"):
             st.markdown(
                 "Data comes from **Elhub** (`PRODUCTION_PER_GROUP_MBA_HOUR`), "
-                "ETL’d into your MongoDB Atlas collection. Times are UTC; line chart shows **daily totals**."
+                "ETL’d into MongoDB Atlas. Times are UTC; the line chart shows **daily totals**."
             )
 
     except ModuleNotFoundError as e:
@@ -430,6 +436,7 @@ elif page == "Elhub (Mongo)":
             f"Missing package: `{e.name}`. Install required deps:\n\n"
             "pip install pymongo certifi altair plotly"
         )
+
 
 # -------------------------------
 # PAGE 5: DUMMY PAGE
