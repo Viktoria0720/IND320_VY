@@ -3,15 +3,6 @@ Created on Wed Sep  24 10:58:08 2023
 
 @author: viyav
 """
-# app.py
-"""
-Complete Streamlit app:
-- Home
-- Data Table (CSV + sparklines)
-- Plots (CSV)
-- Elhub (Mongo) – distribution + monthly trend
-- To be continued
-"""
 
 import os
 import pandas as pd
