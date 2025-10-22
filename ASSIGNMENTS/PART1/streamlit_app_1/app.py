@@ -32,6 +32,8 @@ st.set_page_config(
 # ===============================
 # common data from CSV
 # ===============================
+
+
 @st.cache_data
 def load_data():
     file_path = os.path.join(os.path.dirname(__file__), "open-meteo-subset.csv")
@@ -113,7 +115,7 @@ def _list_year_months(area: str):
         {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}}
     ]
 
-    rows = list(coll.aggregate(pipeline))
+    rows = list(coll_name.aggregate(pipeline))
     # Return ["YYYY-MM", ...]
     return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
 
