@@ -60,15 +60,9 @@ except Exception as e:
 
 @st.cache_resource(show_spinner=False)
 def _get_mongo_collection():
-    """
-    Connect to MongoDB Atlas using st.secrets.
-    Expected .streamlit/secrets.toml (local) or cloud secrets:
-
-      [mongo]
-      uri = "mongodb+srv://USER:PASS@CLUSTER/?retryWrites=true&w=majority&appName=APP"
-      db = "energy"
-      collection = "elhub_production_2021"
-    """
+   
+    #Connect to MongoDB Atlas using st.secrets.
+ 
     try:
         from pymongo import MongoClient
         import certifi
@@ -131,10 +125,8 @@ def _list_groups(price_area: str) -> list[str]:
 
 @st.cache_data(show_spinner=False)
 def _list_year_months(price_area: str) -> list[str]:
-    """
-    Return available months as ['YYYY-MM', ...] for a given price area.
-    Handles 'time' either as BSON Date or ISO-8601 string.
-    """
+   
+    #Return available months as ['YYYY-MM', ...] for a given price area.
     from pymongo import ASCENDING
     coll = _get_mongo_collection()
     pipeline = [
@@ -164,10 +156,9 @@ def _list_year_months(price_area: str) -> list[str]:
 
 @st.cache_data(show_spinner=True)
 def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -> pd.DataFrame:
-    """
-    Aggregate daily totals per productionGroup within the selected month.
-    Output columns: ['date', 'productionGroup', 'quantityKwh'].
-    """
+    
+    #Aggregate daily totals per productionGroup within the selected month.
+    
     from pymongo import ASCENDING
     coll = _get_mongo_collection()
 
@@ -367,7 +358,7 @@ elif page == "Elhub (Mongo)":
         st.subheader("Monthly Trend")
 
         groups_all = _list_groups(area)
-        if hasattr(st, "pills"):  # Streamlit >=1.39
+        if hasattr(st, "pills"):  
             selected_groups = st.pills(
                 "Production groups",
                 options=groups_all,
@@ -433,9 +424,9 @@ elif page == "Elhub (Mongo)":
 elif page == "To be continued":
     st.title("Keep Calm and Don’t Give Up on Coding 💻")
     st.markdown(
-        "<div style='background-color:red; color:white; font-size:40px; "
+        "<div style='background-color:blue; color:white; font-size:40px; "
         "text-align:center; padding:50px;'>"
-        "Keep calm and don’t give up on coding. More pages are coming soon!"
+        "Docker is hard to deal with, but it will get better soon! Hopefully..."
         "</div>",
         unsafe_allow_html=True,
     )
