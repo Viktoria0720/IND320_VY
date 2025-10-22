@@ -45,51 +45,50 @@ df = load_data()
 # ===============================
 # Functions for Elhub (Mongo) page
 # ===============================
-def _mongo_available() -> bool:
-    try:
-        _ = st.secrets["mongo"]["uri"]
-        _ = st.secrets["mongo"]["db"]
-        _ = st.secrets["mongo"]["collection"]
-        return True
-    except Exception:
-        return False
-
+# ---------------------------
+# MONGO CONNECTION (CACHED)
+# ---------------------------
 @st.cache_resource(show_spinner=False)
 def _get_mongo_collection():
-    """Connect to MongoDB Atlas using st.secrets."""
-    from pymongo import MongoClient
-    import certifi
+    """Return the MongoDB collection defined in st.secrets['mongo']."""
+    try:
+        from pymongo import MongoClient
+        import certifi
+    except Exception as e:
+        st.error("Missing dependencies. Install with: pip install pymongo certifi")
+        st.stop()
 
-    uri = st.secrets["mongo"]["uri"]
-    db_name = st.secrets["mongo"]["db"]
-    coll_name = st.secrets["mongo"]["collection"]
+    if "mongo" not in st.secrets:
+        st.error(
+            "MongoDB secrets not found. Add .streamlit/secrets.toml with:\n\n"
+            "[mongo]\nuri = \"...\"\ndb = \"energy\"\ncollection = \"elhub_production_2021\""
+        )
+        st.stop()
+
+    uri = st.secrets["mongo"].get("uri")
+    db_name = st.secrets["mongo"].get("db")
+    coll_name = st.secrets["mongo"].get("collection")
+
+    if not uri or not db_name or not coll_name:
+        st.error("Incomplete Mongo secrets. Ensure uri, db, and collection are set.")
+        st.stop()
 
     client = MongoClient(uri, tls=True, tlsCAFile=certifi.where())
     db = client[db_name]
     return db[coll_name]
 
-@st.cache_data(show_spinner=False)
-def _list_price_areas() -> List[str]:
-    coll = _get_mongo_collection()
-    areas = sorted([a for a in coll.distinct("priceArea") if a])
-    return areas
 
-@st.cache_data(show_spinner=False)
-def _list_groups(price_area: str | None = None) -> List[str]:
-    coll = _get_mongo_collection()
-    query = {"priceArea": price_area} if price_area else {}
-    groups = coll.distinct("productionGroup", filter=query)
-    return sorted([g for g in groups if g])
-
-@st.cache_data(show_spinner=False)
-def _list_year_months(area: str):
-    from pymongo import ASCENDING
-
-    # Build a robust coercion for string or date types
-    pipeline = [
-        {"$match": {"area": area}},
-        {"$addFields": {
-            # If time is already a Date, keep it; else try to parse
+# ---------------------------
+# UTILS
+# ---------------------------
+def _time_to_date_field_stage():
+    """
+    Stage that guarantees we have a proper date field 'time_dt':
+    - If 'time' is already a Date -> keep it
+    - Else try to parse string as ISO-8601
+    """
+    return {
+        "$addFields": {
             "time_dt": {
                 "$cond": [
                     {"$eq": [{"$type": "$time"}, "date"]},
@@ -97,62 +96,130 @@ def _list_year_months(area: str):
                     {
                         "$dateFromString": {
                             "dateString": "$time",
-                            # If your strings are ISO-8601, this works without format
-                            # Add a format if you imported as custom strings, e.g. "%Y-%m-%dT%H:%M:%SZ"
                             "onError": None,
                             "onNull": None
                         }
                     }
                 ]
             }
-        }},
-        # Filter out rows we couldn't parse
-        {"$match": {"time_dt": {"$ne": None}}},
-        {"$group": {
-            "_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}},
-            "n": {"$sum": 1}
-        }},
-        {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}}
-    ]
+        }
+    }
 
+
+# ---------------------------
+# LOOKUPS / FILTERS (CACHED)
+# ---------------------------
+@st.cache_data(show_spinner=False)
+def list_price_areas() -> list[str]:
+    """Distinct list of areas (e.g., NO1..NO5)."""
+    coll = _get_mongo_collection()
+    areas = coll.distinct("area")
+    return sorted([a for a in areas if a is not None])
+
+
+@st.cache_data(show_spinner=False)
+def list_groups(area: str) -> list[str]:
+    """Distinct production groups for a given area."""
+    coll = _get_mongo_collection()
+    groups = coll.distinct("productionGroup", {"area": area})
+    return sorted([g for g in groups if g is not None])
+
+
+@st.cache_data(show_spinner=False)
+def list_year_months(area: str) -> list[str]:
+    """
+    Return available year-months (YYYY-MM) for a given area,
+    robust to 'time' being Date or String.
+    """
+    from pymongo import ASCENDING
+
+    coll = _get_mongo_collection()
+
+    pipeline = [
+        {"$match": {"area": area}},
+        _time_to_date_field_stage(),
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$group": {"_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}}, "n": {"$sum": 1}}},
+        {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}},
+    ]
     rows = list(coll.aggregate(pipeline))
-    # Return ["YYYY-MM", ...]
     return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
 
 
+# ---------------------------
+# AGGREGATIONS (CACHED)
+# ---------------------------
 @st.cache_data(show_spinner=True)
-def _totals_for_area(price_area: str) -> pd.DataFrame:
+def totals_for_area(area: str) -> pd.DataFrame:
+    """
+    Total kWh by productionGroup for a single area (descending).
+    Returns DataFrame: productionGroup, quantityKwh
+    """
     coll = _get_mongo_collection()
     pipeline = [
-        {"$match": {"priceArea": price_area}},
+        {"$match": {"area": area}},
         {"$group": {"_id": "$productionGroup", "quantityKwh": {"$sum": "$quantityKwh"}}},
         {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
         {"$sort": {"quantityKwh": -1}},
     ]
     return pd.DataFrame(list(coll.aggregate(pipeline)))
 
+
 @st.cache_data(show_spinner=True)
-def _monthly_series(price_area: str, groups: List[str], year: int, month: int) -> pd.DataFrame:
+def timeseries_for(area: str, groups: list[str], year_month: str) -> pd.DataFrame:
+    """
+    Return a pivoted time series for an area and a set of groups
+    limited to a 'YYYY-MM' month.
+    Output: index=time (datetime64), columns=productionGroup, values=quantityKwh
+    """
+    from pymongo import ASCENDING
+
     coll = _get_mongo_collection()
-    start = dt.datetime(year, month, 1, tzinfo=dt.timezone.utc)
-    end = (dt.datetime(year + 1, 1, 1, tzinfo=dt.timezone.utc)
-           if month == 12 else dt.datetime(year, month + 1, 1, tzinfo=dt.timezone.utc))
-    match = {"priceArea": price_area, "startTime": {"$gte": start, "$lt": end}}
-    if groups:
-        match["productionGroup"] = {"$in": groups}
+
+    # Compute the month window [start, end)
+    try:
+        start = pd.to_datetime(year_month + "-01")
+        end = (start + pd.offsets.MonthEnd(1)) + pd.Timedelta(days=1)  # day after month end
+    except Exception:
+        st.error(f"Invalid year_month: {year_month}. Expected 'YYYY-MM'.")
+        st.stop()
+
     pipeline = [
-        {"$match": match},
-        {"$project": {"_id": 0, "productionGroup": 1, "startTime": 1, "quantityKwh": 1}},
+        {"$match": {"area": area, "productionGroup": {"$in": groups}}},
+        _time_to_date_field_stage(),
+        {"$match": {"time_dt": {"$ne": None, "$gte": start.to_pydatetime(), "$lt": end.to_pydatetime()}}},
+        {"$project": {"_id": 0, "time": "$time_dt", "productionGroup": 1, "quantityKwh": 1}},
+        {"$sort": {"time": ASCENDING, "productionGroup": ASCENDING}},
     ]
-    df = pd.DataFrame(list(coll.aggregate(pipeline)))
-    if df.empty:
-        return df
-    df["startTime"] = pd.to_datetime(df["startTime"], utc=True)
-    df["date"] = df["startTime"].dt.date
-    daily = (df.groupby(["productionGroup", "date"], as_index=False)["quantityKwh"]
-               .sum()
-               .sort_values(["productionGroup", "date"]))
-    return daily
+
+    rows = list(coll.aggregate(pipeline))
+    if not rows:
+        return pd.DataFrame(columns=["time"] + groups).set_index("time")
+
+    df = pd.DataFrame(rows)
+    # Pivot to wide format: time x group
+    out = (
+        df.pivot_table(index="time", columns="productionGroup", values="quantityKwh", aggfunc="sum")
+          .sort_index()
+          .asfreq("H")  # hourly series expected; adjust if needed
+    )
+    out.index = pd.to_datetime(out.index)  # ensure dtype
+    return out
+
+
+# ---------------------------
+# DIAGNOSTICS (OPTIONAL)
+# ---------------------------
+@st.cache_data(show_spinner=False)
+def mongo_counts_by_area() -> pd.DataFrame:
+    """(Optional) Quick sanity check: count docs per area."""
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$group": {"_id": "$area", "n": {"$sum": 1}}},
+        {"$sort": {"n": -1}},
+        {"$project": {"_id": 0, "area": "$_id", "n": 1}},
+    ]
+    return pd.DataFrame(list(coll.aggregate(pipeline)))
 
 # -------------------------------
 # SIDEBAR NAVIGATION
