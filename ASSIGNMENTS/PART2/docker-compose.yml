@@ -7,7 +7,7 @@ services:
     volumes:
       - ./notebooks:/home/jovyan/work
     env_file:
-      - .secrets.env
+      - ./notebooks/.secrets.env
     environment:
       - JUPYTER_TOKEN=ind320
     depends_on:
