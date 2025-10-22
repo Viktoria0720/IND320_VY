@@ -3,6 +3,15 @@ Created on Wed Sep  24 10:58:08 2023
 
 @author: viyav
 """
+
+
+import os, pathlib, streamlit as st
+
+st.write("Working dir:", os.getcwd())
+st.write("App dir:", pathlib.Path(__file__).parent)
+st.write("Exists .streamlit?:", (pathlib.Path(__file__).parent / ".streamlit").exists())
+st.write("Found secrets sections:", list(st.secrets.keys()))
+
 import os
 import datetime as dt
 from typing import List, Tuple
