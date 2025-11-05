@@ -276,7 +276,6 @@ def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -
     return pd.DataFrame(list(coll.aggregate(pipeline)))
 
 def ensure_weather_for_selected_area():
-    """Fetch/cached weather for 2021 if area changed or nothing loaded yet."""
     current = st.session_state.global_area
     if st.session_state.wx_area != current or st.session_state.wx2021 is None:
         row = AREAS_DF[AREAS_DF["area"] == current].iloc[0]
@@ -442,15 +441,19 @@ if "area" not in st.session_state:
 if "wx2021" not in st.session_state:
     st.session_state.wx2021 = None
 
-# ---- Global shared state (place near imports / before page rendering) ----
+# --- Global state (once) ---
 if "global_area" not in st.session_state:
-    st.session_state.global_area = "NO5"  # your preferred default
-
-# Remember which area the current weather was fetched for
+    st.session_state.global_area = "NO5"   # default
 if "wx_area" not in st.session_state:
     st.session_state.wx_area = None
 if "wx2021" not in st.session_state:
     st.session_state.wx2021 = None
+
+def _on_area_change():
+    """Called when area changes anywhere. Forces weather refresh on next use."""
+    st.session_state.wx_area = None
+    st.session_state.wx2021 = None
+
 
 
 # =========================================================
@@ -490,8 +493,14 @@ elif page.startswith("4 –"):
 
         # IMPORTANT: bind to the same key everywhere
         idx = areas.index(st.session_state.global_area) if st.session_state.global_area in areas else 0
-        st.radio("Select price area", areas, index=idx, horizontal=True, key="global_area")
-
+        st.radio(
+            "Select price area",
+            areas,
+            index=idx,
+            horizontal=True,
+            key="global_area",
+            on_change=_on_area_change,   # <<< important
+        )
         area = st.session_state.global_area
         
         pie_df = _totals_for_area(area)
@@ -661,9 +670,10 @@ elif page.startswith("new A –"):
 # -------------------------------
 elif page.startswith("2 –"):
     area = st.session_state.global_area
+    wx = ensure_weather_for_selected_area()
     st.title(f"Weather Data Table (Open-Meteo 2021) — {area}")
 
-    wx = ensure_weather_for_selected_area()
+    
     if wx is None or wx.empty:
         st.info("Go to '4 – Elhub (Mongo)' to select an area (this triggers the weather fetch).")
         st.stop()
@@ -708,10 +718,12 @@ elif page.startswith("2 –"):
 # PAGE 3: PLOTS (weather)
 # -------------------------------
 elif page.startswith("3 –"):
-    st.title("Weather Plots (Open-Meteo 2021)")
-    wx = st.session_state.get("wx2021")
+    area = st.session_state.global_area
+    st.title(f"Weather Plots (Open-Meteo 2021) — {area}")
+
+    wx = ensure_weather_for_selected_area()
     if wx is None or wx.empty:
-        st.info("Go to 'Area selector' to download weather for 2021 first.")
+        st.info("Go to '4 – Elhub (Mongo)' to select an area (this triggers the weather fetch).")
         st.stop()
 
     options = ["All columns"] + [c for c in wx.columns if c != "timestamp"]
@@ -730,10 +742,10 @@ elif page.startswith("3 –"):
         ax.plot(month_df["timestamp"], month_df[column_choice], label=column_choice)
 
     ax.set_title(f"Weather for {month_selected}")
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Value")
+    ax.set_xlabel("Time"); ax.set_ylabel("Value")
     ax.legend(loc="upper right", ncols=2, fontsize=8)
     st.pyplot(fig, use_container_width=True)
+
 
 # -------------------------------
 # PAGE new B: Outliers & Anomalies (tabs)
