@@ -238,10 +238,6 @@ def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -
     return pd.DataFrame(_agg(coll, pipeline))
 
 
-@st.cache_data(show_spinner=True)
-def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
-    return load_elhub_for_area(price_area, 2021)
-
 @st.cache_data(show_spinner=False)
 def elhub_available_years(price_area: str) -> list[int]:
     coll = _get_mongo_collection()
@@ -268,11 +264,22 @@ def elhub_available_years(price_area: str) -> list[int]:
 
 @st.cache_data(show_spinner=True)
 def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
+    """
+    Load Elhub production for (area, year). Robust to startTime string/BSON.
+    No server-side $sort (to avoid 32MB sort limit) — we sort in pandas.
+    Returns: ['time','area','group','production'] with Europe/Oslo tz-naive times.
+    """
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
-        {"$project": {"_id": 0, "startTime": 1, "priceArea": 1, "productionGroup": 1, "quantityKwh": 1}},
-        {"$addFields": {
+        {"$project": {  # keep docs small
+            "_id": 0,
+            "startTime": 1,
+            "priceArea": 1,
+            "productionGroup": 1,
+            "quantityKwh": 1,
+        }},
+        {"$addFields": {  # coerce startTime to a proper date
             "time_dt": {
                 "$cond": [
                     {"$eq": [{"$type": "$startTime"}, "date"]},
@@ -289,14 +296,28 @@ def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
             "group": "$productionGroup",
             "production": "$quantityKwh",
         }},
-        {"$sort": {"time": 1}},
+        # ⚠️ no $sort here — we'll sort client-side to avoid 32MB sort cap
     ]
-    rows = _agg(coll, pipeline)
+    rows = _agg(coll, pipeline)  # allowDiskUse=True inside _agg
     df = pd.DataFrame(rows)
-    if df.empty: return df
-    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True).dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
+    if df.empty:
+        return df
+
+    # normalize types
+    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)\
+                    .dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
     df["production"] = pd.to_numeric(df["production"], errors="coerce")
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
+
+    # sort **client-side**
+    df = df.dropna(subset=["time","production"]).sort_values("time")
+    return df[["time","area","group","production"]]
+
+
+@st.cache_data(show_spinner=True)
+def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
+    return load_elhub_for_area(price_area, 2021)
+
     return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
 
 
