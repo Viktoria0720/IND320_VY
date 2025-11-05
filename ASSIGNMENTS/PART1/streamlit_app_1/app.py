@@ -3,9 +3,10 @@ Created on Wed Sep  24 10:58:08 2023
 
 @author: viyav
 """
+# app.py
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 import requests
@@ -15,6 +16,19 @@ from scipy.fft import dct, idct
 from sklearn.neighbors import LocalOutlierFactor
 from statsmodels.tsa.seasonal import STL
 from scipy.signal import spectrogram
+
+# Optional viz engines (graceful fallback)
+try:
+    import altair as alt
+    USE_ALTAIR = True
+except Exception:
+    alt = None
+    USE_ALTAIR = False
+
+try:
+    import plotly.express as px
+except Exception:
+    px = None
 
 # ---------- Streamlit page setup ----------
 st.set_page_config(page_title="IND320 • Open-Meteo + Elhub", layout="wide")
@@ -27,10 +41,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# =========================================================
-# SHARED CONSTANTS
-# =========================================================
+# -------------------------------------------------------
+# GLOBAL STATE (shared across pages)
+# -------------------------------------------------------
+if "area" not in st.session_state:
+    st.session_state.area = "NO5"   # default once
+if "wx2021" not in st.session_state:
+    st.session_state.wx2021 = None
 
+# -------------------------------------------------------
+# SHARED CONSTANTS
+# -------------------------------------------------------
 PRICE_AREAS = [
     {"area": "NO1", "city": "Oslo",         "lat": 59.9139,  "lon": 10.7522},
     {"area": "NO2", "city": "Kristiansand", "lat": 58.1467,  "lon": 7.9956},
@@ -40,17 +61,16 @@ PRICE_AREAS = [
 ]
 AREAS_DF = pd.DataFrame(PRICE_AREAS)
 
-# =========================================================
-# OPEN-METEO API (replaces CSV)
-# =========================================================
-
+# -------------------------------------------------------
+# OPEN-METEO ERA5 (replaces CSV)
+# -------------------------------------------------------
 OPEN_METEO_BASE = "https://archive-api.open-meteo.com/v1/era5"
 
 @st.cache_data(show_spinner=True)
 def get_era5_hourly(
     lat: float,
     lon: float,
-    year: int = 2021,   # assignment: use 2021
+    year: int = 2021,
     hourly_vars: Iterable[str] = (
         "temperature_2m",
         "relative_humidity_2m",
@@ -87,10 +107,9 @@ def get_era5_hourly(
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
-# =========================================================
-# MONGO HELPERS (Elhub production for STL/Spectrogram)
-# =========================================================
-
+# -------------------------------------------------------
+# MONGO (Elhub) HELPERS
+# -------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def _get_mongo_collection():
     """
@@ -127,63 +146,7 @@ def _get_mongo_collection():
     return db[coll_name]
 
 @st.cache_data(show_spinner=False)
-def elhub_available_years(price_area: str) -> list[int]:
-    """
-    Fast Mongo aggregation that finds distinct years for a price area.
-    Works whether startTime is string or BSON Date.
-    """
-    coll = _get_mongo_collection()
-    pipeline = [
-        {"$match": {"priceArea": price_area}},
-        {"$addFields": {
-            "time_dt": {
-                "$cond": [
-                    {"$eq": [{"$type": "$startTime"}, "date"]},
-                    "$startTime",
-                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
-                ]
-            }
-        }},
-        {"$match": {"time_dt": {"$ne": None}}},
-        {"$group": {"_id": {"y": {"$year": "$time_dt"}}}},
-        {"$sort": {"_id.y": 1}},
-    ]
-    rows = list(coll.aggregate(pipeline))
-    return [r["_id"]["y"] for r in rows]
-
-
-@st.cache_data(show_spinner=True)
-def load_elhub_for_area(price_area: str, year: int | None = 2021) -> pd.DataFrame:
-    coll = _get_mongo_collection()
-    proj = {"_id": 0, "startTime": 1, "priceArea": 1, "productionGroup": 1, "quantityKwh": 1}
-    q = {"priceArea": price_area}
-    rows = list(coll.find(q, proj))
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-
-    df = df.rename(columns={
-        "startTime": "time", "priceArea": "area",
-        "productionGroup": "group", "quantityKwh": "production",
-    })
-    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)\
-                   .dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
-    df["production"] = pd.to_numeric(df["production"], errors="coerce")
-    df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
-
-    if year is not None:
-        df = df[df["time"].dt.year == year]
-
-    return df.dropna(subset=["time", "production"])\
-             .sort_values("time")[["time","area","group","production"]]
-
-# =========================================================
-# MONGO HELPERS (Elhub dashboard page)
-# =========================================================
-
-@st.cache_data(show_spinner=False)
 def _list_price_areas() -> list[str]:
-    """Return distinct price areas from Mongo."""
     coll = _get_mongo_collection()
     rows = coll.distinct("priceArea")
     rows = [r for r in rows if r is not None]
@@ -191,7 +154,6 @@ def _list_price_areas() -> list[str]:
 
 @st.cache_data(show_spinner=False)
 def _totals_for_area(price_area: str) -> pd.DataFrame:
-    """Sum quantityKwh by productionGroup within a price area."""
     from pymongo import DESCENDING
     coll = _get_mongo_collection()
     pipeline = [
@@ -204,7 +166,6 @@ def _totals_for_area(price_area: str) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def _list_groups(price_area: str) -> list[str]:
-    """Distinct production groups available in a price area."""
     coll = _get_mongo_collection()
     groups = coll.distinct("productionGroup", {"priceArea": price_area})
     groups = [g for g in groups if g is not None]
@@ -212,10 +173,6 @@ def _list_groups(price_area: str) -> list[str]:
 
 @st.cache_data(show_spinner=False)
 def _list_year_months(price_area: str) -> list[str]:
-    """
-    Return available months as ['YYYY-MM', ...] for a given price area.
-    Handles startTime as BSON Date or ISO string.
-    """
     from pymongo import ASCENDING
     coll = _get_mongo_collection()
     pipeline = [
@@ -238,10 +195,6 @@ def _list_year_months(price_area: str) -> list[str]:
 
 @st.cache_data(show_spinner=True)
 def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -> pd.DataFrame:
-    """
-    Aggregate **daily totals** per productionGroup within the selected month.
-    Handles startTime as BSON Date or ISO string.
-    """
     from pymongo import ASCENDING
     coll = _get_mongo_collection()
 
@@ -275,20 +228,45 @@ def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -
     ]
     return pd.DataFrame(list(coll.aggregate(pipeline)))
 
-def ensure_weather_for_selected_area():
-    current = st.session_state.global_area
-    if st.session_state.wx_area != current or st.session_state.wx2021 is None:
-        row = AREAS_DF[AREAS_DF["area"] == current].iloc[0]
-        with st.spinner(f"Downloading ERA5 for {row.city} ({current}) – 2021 ..."):
-            st.session_state.wx2021 = get_era5_hourly(row.lat, row.lon, 2021)
-        st.session_state.wx_area = current
-    return st.session_state.wx2021
+@st.cache_data(show_spinner=True)
+def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
+    """Load fixed **2021** Elhub production for STL/Spectrogram."""
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, 2021]}}},
+        {"$project": {
+            "_id": 0,
+            "time": "$time_dt",
+            "area": "$priceArea",
+            "group": "$productionGroup",
+            "production": "$quantityKwh",
+        }},
+        {"$sort": {"time": 1}},
+    ]
+    rows = list(coll.aggregate(pipeline, allowDiskUse=True))
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)\
+                    .dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
+    df["production"] = pd.to_numeric(df["production"], errors="coerce")
+    df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
+    return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
 
-
-# =========================================================
+# -------------------------------------------------------
 # ANALYTICS HELPERS (STL, Spectrogram, SPC, LOF)
-# =========================================================
-
+# -------------------------------------------------------
 def stl_decompose_production(
     prod_df: pd.DataFrame,
     area: str,
@@ -300,132 +278,81 @@ def stl_decompose_production(
 ):
     if "time" not in prod_df.columns or "production" not in prod_df.columns:
         raise ValueError("prod_df must include 'time' and 'production' columns.")
-
     df = prod_df.copy()
-    if "area" not in df.columns:
-        df["area"] = area
-    if "group" not in df.columns:
-        df["group"] = group
-
+    if "area" not in df.columns:  df["area"] = area
+    if "group" not in df.columns: df["group"] = group
     df = df[(df["area"] == area) & (df["group"] == group)].sort_values("time")
     if df.empty:
         raise ValueError(f"No production for area={area}, group={group}")
-
     y = pd.Series(df["production"].to_numpy(float), index=pd.to_datetime(df["time"]))
     res = STL(y, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
-
-    fig = res.plot()
-    fig.set_size_inches(11, 5)
-    fig.suptitle(f"STL – {area}/{group}")
-    fig.tight_layout()
+    fig = res.plot(); fig.set_size_inches(11, 5); fig.suptitle(f"STL – {area}/{group}"); fig.tight_layout()
     return fig, res
 
 def production_spectrogram(
-    prod_df: pd.DataFrame,
-    area: str,
-    group: str,
-    window_len: int = 24*7,
-    overlap: float = 0.5,
+    prod_df: pd.DataFrame, area: str, group: str, window_len: int = 24*7, overlap: float = 0.5,
 ):
     df = prod_df.copy()
-    if "area" not in df.columns:
-        df["area"] = area
-    if "group" not in df.columns:
-        df["group"] = group
-
+    if "area" not in df.columns:  df["area"] = area
+    if "group" not in df.columns: df["group"] = group
     df = df[(df["area"] == area) & (df["group"] == group)].sort_values("time")
     if df.empty:
         raise ValueError(f"No production for area={area}, group={group}")
-
-    x = df["production"].to_numpy(float)
-    fs = 1.0
-    nperseg = int(window_len)
-    noverlap = int(overlap * nperseg)
-
+    x = df["production"].to_numpy(float); fs = 1.0
+    nperseg = int(window_len); noverlap = int(overlap * nperseg)
     f, t, Sxx = spectrogram(x, fs=fs, nperseg=nperseg, noverlap=noverlap, scaling="spectrum")
-
     fig, ax = plt.subplots(figsize=(11, 3.6))
     im = ax.pcolormesh(t, f, 10*np.log10(Sxx + 1e-12), shading="auto")
-    ax.set_title(f"Spectrogram – {area}/{group}")
-    ax.set_xlabel("Window index")
-    ax.set_ylabel("Frequency [cycles/hour]")
-    fig.colorbar(im, ax=ax, label="Power [dB]")
-    fig.tight_layout()
-    return fig
+    ax.set_title(f"Spectrogram – {area}/{group}"); ax.set_xlabel("Window index"); ax.set_ylabel("Frequency [cycles/hour]")
+    fig.colorbar(im, ax=ax, label="Power [dB]"); fig.tight_layout(); return fig
 
-def spc_outliers_temperature(
-    df: pd.DataFrame,
-    dct_cutoff: float = 0.02,
-    n_sigma: float = 3.5,
-):
+def spc_outliers_temperature(df: pd.DataFrame, dct_cutoff: float = 0.02, n_sigma: float = 3.5):
     ts = df[["timestamp", "temperature_2m"]].dropna().copy()
     x = ts["temperature_2m"].to_numpy(float)
-
-    X = dct(x, type=2, norm="ortho")
-    k = max(1, int(len(X) * dct_cutoff))
+    X = dct(x, type=2, norm="ortho"); k = max(1, int(len(X) * dct_cutoff))
     X_hp = X.copy(); X_hp[:k] = 0.0
-    satv = idct(X_hp, type=2, norm="ortho")
-    satv_s = pd.Series(satv, index=ts.index, name="SATV")
-
+    satv = idct(X_hp, type=2, norm="ortho"); satv_s = pd.Series(satv, index=ts.index, name="SATV")
     med = float(np.median(satv)); mad = float(np.median(np.abs(satv - med)))
     sigma = 1.4826*mad if mad > 0 else float(np.std(satv))
     upper = med + n_sigma*sigma; lower = med - n_sigma*sigma
-
     is_out = (satv_s > upper) | (satv_s < lower)
     out_df = ts.loc[is_out].assign(SATV=satv_s.loc[is_out])
-
     fig, ax = plt.subplots(figsize=(11, 3.6))
     ax.plot(ts["timestamp"], ts["temperature_2m"], linewidth=1.0, label="Temperature")
     ax.scatter(out_df["timestamp"], out_df["temperature_2m"], s=10, color='crimson', label="Outlier")
     ax.set_title("Temperature & SPC Outliers (DCT high-pass)"); ax.set_ylabel("°C")
     ax.legend(); fig.tight_layout()
     return fig, out_df, pd.DataFrame([{
-        "n": int(len(ts)),
-        "n_outliers": int(is_out.sum()),
+        "n": int(len(ts)), "n_outliers": int(is_out.sum()),
         "pct_outliers": float(is_out.mean()*100.0),
-        "dct_cutoff": float(dct_cutoff),
-        "n_sigma": float(n_sigma),
-        "median_SATV": med,
-        "sigma_robust": sigma,
-        "upper_bound": upper,
-        "lower_bound": lower,
+        "dct_cutoff": float(dct_cutoff), "n_sigma": float(n_sigma),
+        "median_SATV": med, "sigma_robust": sigma, "upper_bound": upper, "lower_bound": lower,
     }])
 
-def lof_precip_anomalies(
-    df: pd.DataFrame,
-    contamination: float = 0.01,
-    n_neighbors: int = 35,
-):
+def lof_precip_anomalies(df: pd.DataFrame, contamination: float = 0.01, n_neighbors: int = 35):
     sub = df[["timestamp", "precipitation"]].dropna().copy()
     y = sub["precipitation"].to_numpy(float).reshape(-1, 1)
-
     lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
     labels = lof.fit_predict(y)  # -1 = anomaly
     sub["lof_score"] = -lof.negative_outlier_factor_
     anoms = sub.loc[labels == -1]
-
     fig, ax = plt.subplots(figsize=(11, 3.6))
     ax.plot(sub["timestamp"], sub["precipitation"], linewidth=1.0, label="Precipitation")
     ax.scatter(anoms["timestamp"], anoms["precipitation"], s=10, color='orange', label="LOF anomaly")
     ax.set_title("Precipitation & LOF anomalies"); ax.set_ylabel("mm")
     ax.legend(); fig.tight_layout()
     return fig, anoms, pd.DataFrame([{
-        "n": int(len(sub)),
-        "n_anomalies": int(len(anoms)),
+        "n": int(len(sub)), "n_anomalies": int(len(anoms)),
         "pct_anomalies": float(100*len(anoms)/max(1,len(sub))),
-        "contamination": float(contamination),
-        "n_neighbors": int(n_neighbors),
+        "contamination": float(contamination), "n_neighbors": int(n_neighbors),
     }])
 
-
-
-# =========================================================
+# -------------------------------------------------------
 # SIDEBAR NAVIGATION (assignment order)
-# =========================================================
-
+# -------------------------------------------------------
 PAGES = [
     "1 – Home",
-    "4 – Area selector",
+    "4 – Area selector",          # ← this page also shows Mongo pie + monthly trend
     "new A – STL & Spectrogram",
     "2 – Data Table",
     "3 – Plots",
@@ -435,81 +362,50 @@ PAGES = [
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", PAGES, index=0)
 
-# Shared state
-if "area" not in st.session_state:
-    st.session_state.area = "NO5"
-if "wx2021" not in st.session_state:
-    st.session_state.wx2021 = None
-
-# --- Global state (once) ---
-if "global_area" not in st.session_state:
-    st.session_state.global_area = "NO5"   # default
-if "wx_area" not in st.session_state:
-    st.session_state.wx_area = None
-if "wx2021" not in st.session_state:
-    st.session_state.wx2021 = None
-
-def _on_area_change():
-    """Called when area changes anywhere. Forces weather refresh on next use."""
-    st.session_state.wx_area = None
-    st.session_state.wx2021 = None
-
-
-
-# =========================================================
+# -------------------------------------------------------
 # PAGES
-# =========================================================
+# -------------------------------------------------------
 
-# -------------------------------
 # PAGE 1: HOME
-# -------------------------------
 if page.startswith("1 –"):
     st.title("Welcome to the IND320 App 🌦️⚡")
-    st.write("This app fetches **Open-Meteo ERA5** weather (year 2021) and uses **Elhub** production data from Mongo for STL/Spectrogram.")
+    st.write("Select an area on **Page 4**. That selection drives the weather download (2021) and the Mongo views.")
     st.dataframe(AREAS_DF[["area","city","lon","lat"]], use_container_width=True)
 
-# -------------------------------
-# PAGE 4: AREA SELECTOR (drives weather download)
-# -------------------------------
+# PAGE 4: AREA SELECTOR (drives weather + shows Mongo pie & trend)
 elif page.startswith("4 –"):
-    st.title("Elhub – Production per Group (MongoDB)")
+    st.title("Select Electricity Price Area")
+    area_codes = AREAS_DF["area"].tolist()
+    default_idx = area_codes.index(st.session_state.area) if st.session_state.area in area_codes else 0
+    area = st.radio("Price area", area_codes, index=default_idx, horizontal=True)
+    st.session_state.area = area
 
-    # Probe connection...
+    # Weather download for the selected area (2021)
+    row = AREAS_DF[AREAS_DF["area"] == area].iloc[0]
+    with st.spinner(f"Downloading ERA5 hourly weather for {row.city} (2021) from Open-Meteo..."):
+        wx = get_era5_hourly(row.lat, row.lon, 2021)
+    st.session_state.wx2021 = wx
+    st.success(f"Downloaded {len(wx)} rows for {row.city} / {area} (2021).")
+
+    # ---- Mongo pie + monthly trend (same page) ----
+    st.divider()
+    st.subheader("Elhub – Production overview (MongoDB)")
+    # Connection probe
     try:
         _ = _get_mongo_collection().estimated_document_count()
     except Exception as e:
-        st.error("Could not connect to MongoDB ..."); 
+        st.error("Could not connect to MongoDB.")
         with st.expander("Technical details"): st.exception(e)
         st.stop()
 
     left, right = st.columns(2, gap="large")
-
     with left:
-        st.subheader("Distribution by Production Group")
-        areas = _list_price_areas()
-        if not areas:
-            st.warning("No price areas found in MongoDB.")
-            st.stop()
-
-        # IMPORTANT: bind to the same key everywhere
-        idx = areas.index(st.session_state.global_area) if st.session_state.global_area in areas else 0
-        st.radio(
-            "Select price area",
-            areas,
-            index=idx,
-            horizontal=True,
-            key="global_area",
-            on_change=_on_area_change,   # <<< important
-        )
-        area = st.session_state.global_area
-        
+        st.markdown("**Distribution by Production Group**")
         pie_df = _totals_for_area(area)
         if pie_df.empty:
             st.info("No data for the selected area.")
         else:
-            # Prefer Altair/Plotly if available; fallback to dataframe
-            try:
-                import altair as alt
+            if USE_ALTAIR and alt is not None:
                 chart = (
                     alt.Chart(pie_df)
                     .mark_arc()
@@ -520,21 +416,17 @@ elif page.startswith("4 –"):
                             alt.Tooltip("productionGroup:N", title="Group"),
                             alt.Tooltip("quantityKwh:Q", title="kWh", format=",.0f"),
                         ],
-                    )
-                    .properties(height=360)
+                    ).properties(height=360)
                 )
                 st.altair_chart(chart, use_container_width=True)
-            except Exception:
-                try:
-                    import plotly.express as px
-                    fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
-                    st.plotly_chart(fig, use_container_width=True)
-                except Exception:
-                    st.dataframe(pie_df, use_container_width=True)
+            elif px is not None:
+                fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.dataframe(pie_df, use_container_width=True)
 
     with right:
-        st.subheader("Monthly Trend")
-
+        st.markdown("**Monthly Trend**")
         groups_all = _list_groups(area)
         if hasattr(st, "pills"):
             selected_groups = st.pills(
@@ -556,15 +448,12 @@ elif page.startswith("4 –"):
         else:
             label = st.selectbox("Month", ym_list, index=0)  # "YYYY-MM"
             y_sel, m_sel = map(int, label.split("-"))
-
             trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)
             if trend_df.empty:
                 st.info("No records for these filters.")
             else:
                 trend_df["date"] = pd.to_datetime(trend_df["date"])
-                # Try Altair, then Plotly, then fallback
-                try:
-                    import altair as alt
+                if USE_ALTAIR and alt is not None:
                     line = (
                         alt.Chart(trend_df)
                         .mark_line(point=True)
@@ -577,64 +466,38 @@ elif page.startswith("4 –"):
                                 alt.Tooltip("date:T", title="Date"),
                                 alt.Tooltip("quantityKwh:Q", title="kWh", format=",.0f"),
                             ],
-                        )
-                        .properties(height=360)
+                        ).properties(height=360)
                     )
                     st.altair_chart(line, use_container_width=True)
-                except Exception:
-                    try:
-                        import plotly.express as px
-                        fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
-                        fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
-                        st.plotly_chart(fig2, use_container_width=True)
-                    except Exception:
-                        pivot = trend_df.pivot(index="date", columns="productionGroup", values="quantityKwh")
-                        st.line_chart(pivot)
+                elif px is not None:
+                    fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
+                    fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
+                    st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    st.line_chart(
+                        trend_df.pivot(index="date", columns="productionGroup", values="quantityKwh")
+                    )
 
-    with st.expander("Data source"):
-        st.markdown(
-            "Dataset: **Elhub** `PRODUCTION_PER_GROUP_MBA_HOUR` → ETL to MongoDB Atlas.\n\n"
-            "- `quantityKwh` summed as shown\n"
-            "- Times handled via `$dateFromString` when needed\n"
-            "- Monthly chart shows **daily totals** per production group"
-        )
-
-# -------------------------------
-# PAGE new A: STL & Spectrogram (tabs)
-# -------------------------------
+# PAGE new A: STL & Spectrogram (Elhub production, fixed 2021)
 elif page.startswith("new A –"):
-    st.title("new A – STL & Spectrogram (Elhub production)")
+    st.title("new A – STL & Spectrogram (Elhub production, 2021)")
 
-    if st.session_state.area is None:
-        st.info("Choose a price area on the 'Area selector' page first.")
-        st.stop()
+    area_codes = AREAS_DF["area"].tolist()
+    default_idx = area_codes.index(st.session_state.area) if st.session_state.area in area_codes else 0
+    sel = st.selectbox("Area", area_codes, index=default_idx)
+    if sel != st.session_state.area:
+        st.session_state.area = sel
+    area = st.session_state.area
 
-    # Area selector (default to global area state)
-    area = st.selectbox(
-        "Area", AREAS_DF["area"].tolist(),
-        index=AREAS_DF["area"].tolist().index(st.session_state.area)
-    )
-
-    # Detect available years for this area, default to 2021 if present else latest
-    years = elhub_available_years(area)
-    if not years:
-        st.warning("No production data found for this area.")
-        st.stop()
-
-    default_year = 2021 if 2021 in years else years[-1]
-    year = st.selectbox("Year", years, index=years.index(default_year))
-
-    # Load production for chosen area/year
-    prod_df = load_elhub_for_area(area, year=year)
+    prod_df = load_elhub_for_area_2021(area)
     if prod_df.empty:
-        st.warning(f"No production data for {area} in {year}. Try another year.")
+        st.warning(f"No production data for {area} in 2021.")
         st.stop()
 
     groups = sorted(prod_df["group"].dropna().unique().tolist())
     default_group = groups[0] if groups else "Hydro"
 
     tab1, tab2 = st.tabs(["STL", "Spectrogram"])
-
     with tab1:
         st.subheader("STL decomposition")
         c1, c2, c3, c4 = st.columns(4)
@@ -643,7 +506,6 @@ elif page.startswith("new A –"):
         seasonal = c3.slider("Seasonal smoother", 7, 61, 13, step=2)
         trend = c4.slider("Trend smoother", 21, 401, 101, step=2)
         robust = st.checkbox("Robust", value=True)
-
         fig, _ = stl_decompose_production(prod_df, area=area, group=group,
                                           period=int(period), seasonal=int(seasonal),
                                           trend=int(trend), robust=robust)
@@ -656,28 +518,20 @@ elif page.startswith("new A –"):
                               index=groups.index(default_group), key="spec_group")
         window_len = c2.number_input("Window length (samples)", 24, 24*30, 24*7, step=24)
         overlap = st.slider("Window overlap", 0.0, 0.9, 0.5, 0.05)
-
         fig = production_spectrogram(prod_df, area=area, group=group2,
                                      window_len=int(window_len), overlap=float(overlap))
         st.pyplot(fig, use_container_width=True)
 
-    with st.expander("Data info"):
-        st.write(f"Rows loaded: {len(prod_df):,}  |  Years available for {area}: {years}")
-
-
-# -------------------------------
 # PAGE 2: DATA TABLE (Open-Meteo 2021)
-# -------------------------------
 elif page.startswith("2 –"):
-    area = st.session_state.global_area
-    wx = ensure_weather_for_selected_area()
+    area = st.session_state.area
     st.title(f"Weather Data Table (Open-Meteo 2021) — {area}")
-
-    
+    wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to '4 – Elhub (Mongo)' to select an area (this triggers the weather fetch).")
+        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
         st.stop()
 
+    st.write("First month of the dataset, row-wise sparklines per variable:")
     first_month = wx["timestamp"].dt.to_period("M").min()
     df_first_month = wx[wx["timestamp"].dt.to_period("M") == first_month].copy()
     data_only = df_first_month.drop(columns=["timestamp"])
@@ -685,7 +539,6 @@ elif page.startswith("2 –"):
         "Variable": data_only.columns,
         "Trend": [data_only[c].tolist() for c in data_only.columns],
     })
-
     st.dataframe(
         reshaped,
         column_config={
@@ -711,19 +564,13 @@ elif page.startswith("2 –"):
         c1.write(col_name)
         c2.line_chart(df_first_month.set_index("timestamp")[[col_name]], height=160)
 
-
-
-
-# -------------------------------
 # PAGE 3: PLOTS (weather)
-# -------------------------------
 elif page.startswith("3 –"):
-    area = st.session_state.global_area
+    area = st.session_state.area
     st.title(f"Weather Plots (Open-Meteo 2021) — {area}")
-
-    wx = ensure_weather_for_selected_area()
+    wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to '4 – Elhub (Mongo)' to select an area (this triggers the weather fetch).")
+        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
         st.stop()
 
     options = ["All columns"] + [c for c in wx.columns if c != "timestamp"]
@@ -741,24 +588,20 @@ elif page.startswith("3 –"):
     else:
         ax.plot(month_df["timestamp"], month_df[column_choice], label=column_choice)
 
-    ax.set_title(f"Weather for {month_selected}")
-    ax.set_xlabel("Time"); ax.set_ylabel("Value")
+    ax.set_title(f"Weather for {month_selected}"); ax.set_xlabel("Time"); ax.set_ylabel("Value")
     ax.legend(loc="upper right", ncols=2, fontsize=8)
     st.pyplot(fig, use_container_width=True)
 
-
-# -------------------------------
-# PAGE new B: Outliers & Anomalies (tabs)
-# -------------------------------
+# PAGE new B: Outliers & Anomalies (tabs on weather)
 elif page.startswith("new B –"):
-    st.title("new B – Outliers & Anomalies (Weather 2021)")
+    area = st.session_state.area
+    st.title(f"new B – Outliers & Anomalies (Weather 2021) — {area}")
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to 'Area selector' to download weather for 2021 first.")
+        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
         st.stop()
 
     tab1, tab2 = st.tabs(["Outlier / SPC (Temperature)", "Anomaly / LOF (Precipitation)"])
-
     with tab1:
         st.subheader("SPC via DCT (SATV)")
         c1, c2 = st.columns(2)
@@ -779,15 +622,11 @@ elif page.startswith("new B –"):
         st.write("Summary:", summary_df)
         st.write("Anomaly samples:", anoms_df.head(50))
 
-# -------------------------------
 # PAGE 5: DUMMY / CLOSING
-# -------------------------------
 elif page.startswith("5 –"):
     st.title("Keep Calm and Don’t Give Up on Coding 💻")
     st.markdown(
         "<div style='background-color:#245; color:white; font-size:40px; "
-        "text-align:center; padding:50px;'>"
-        "You're almost there! 🚀"
-        "</div>",
+        "text-align:center; padding:50px;'>You're almost there! 🚀</div>",
         unsafe_allow_html=True,
     )
