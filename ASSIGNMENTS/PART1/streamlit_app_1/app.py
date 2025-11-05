@@ -240,40 +240,7 @@ def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -
 
 @st.cache_data(show_spinner=True)
 def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
-    """Load fixed **2021** Elhub production for STL/Spectrogram."""
-    coll = _get_mongo_collection()
-    pipeline = [
-        {"$match": {"priceArea": price_area}},
-        {"$addFields": {
-            "time_dt": {
-                "$cond": [
-                    {"$eq": [{"$type": "$startTime"}, "date"]},
-                    "$startTime",
-                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
-                ]
-            }
-        }},
-        {"$match": {"time_dt": {"$ne": None}}},
-        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, 2021]}}},
-        {"$project": {
-            "_id": 0,
-            "time": "$time_dt",
-            "area": "$priceArea",
-            "group": "$productionGroup",
-            "production": "$quantityKwh",
-        }},
-        {"$sort": {"time": 1}},
-    ]
-    rows = list(coll.aggregate(pipeline, allowDiskUse=True))
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
-    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)\
-                    .dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
-    df["production"] = pd.to_numeric(df["production"], errors="coerce")
-    df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
-    return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
-
+    return load_elhub_for_area(price_area, 2021)
 
 @st.cache_data(show_spinner=False)
 def elhub_available_years(price_area: str) -> list[int]:
@@ -301,13 +268,10 @@ def elhub_available_years(price_area: str) -> list[int]:
 
 @st.cache_data(show_spinner=True)
 def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
-    """
-    Load Elhub production for (area, year). Returns columns: time, area, group, production.
-    Robust to startTime string/BSON; converts time to Europe/Oslo, tz-naive.
-    """
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
+        {"$project": {"_id": 0, "startTime": 1, "priceArea": 1, "productionGroup": 1, "quantityKwh": 1}},
         {"$addFields": {
             "time_dt": {
                 "$cond": [
@@ -320,7 +284,6 @@ def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
         {"$match": {"time_dt": {"$ne": None}}},
         {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, year]}}},
         {"$project": {
-            "_id": 0,
             "time": "$time_dt",
             "area": "$priceArea",
             "group": "$productionGroup",
@@ -328,13 +291,14 @@ def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
         }},
         {"$sort": {"time": 1}},
     ]
-    df = pd.DataFrame(list(coll.aggregate(pipeline, allowDiskUse=True)))
-    if df.empty:
-        return df
+    rows = _agg(coll, pipeline)
+    df = pd.DataFrame(rows)
+    if df.empty: return df
     df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True).dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
     df["production"] = pd.to_numeric(df["production"], errors="coerce")
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
-    return df.dropna(subset=["time", "production"]).sort_values("time")[["time","area","group","production"]]
+    return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
+
 
 def _agg(coll, pipeline):
     """Aggregate with disk spill enabled."""
