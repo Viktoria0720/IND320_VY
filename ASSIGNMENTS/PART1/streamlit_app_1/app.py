@@ -275,6 +275,15 @@ def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -
     ]
     return pd.DataFrame(list(coll.aggregate(pipeline)))
 
+def ensure_weather_for_selected_area():
+    """Fetch/cached weather for 2021 if area changed or nothing loaded yet."""
+    current = st.session_state.global_area
+    if st.session_state.wx_area != current or st.session_state.wx2021 is None:
+        row = AREAS_DF[AREAS_DF["area"] == current].iloc[0]
+        with st.spinner(f"Downloading ERA5 for {row.city} ({current}) – 2021 ..."):
+            st.session_state.wx2021 = get_era5_hourly(row.lat, row.lon, 2021)
+        st.session_state.wx_area = current
+    return st.session_state.wx2021
 
 
 # =========================================================
@@ -409,6 +418,8 @@ def lof_precip_anomalies(
         "n_neighbors": int(n_neighbors),
     }])
 
+
+
 # =========================================================
 # SIDEBAR NAVIGATION (assignment order)
 # =========================================================
@@ -431,6 +442,17 @@ if "area" not in st.session_state:
 if "wx2021" not in st.session_state:
     st.session_state.wx2021 = None
 
+# ---- Global shared state (place near imports / before page rendering) ----
+if "global_area" not in st.session_state:
+    st.session_state.global_area = "NO5"  # your preferred default
+
+# Remember which area the current weather was fetched for
+if "wx_area" not in st.session_state:
+    st.session_state.wx_area = None
+if "wx2021" not in st.session_state:
+    st.session_state.wx2021 = None
+
+
 # =========================================================
 # PAGES
 # =========================================================
@@ -449,18 +471,12 @@ if page.startswith("1 –"):
 elif page.startswith("4 –"):
     st.title("Elhub – Production per Group (MongoDB)")
 
-    # Try a small probe to show actionable errors early
+    # Probe connection...
     try:
         _ = _get_mongo_collection().estimated_document_count()
     except Exception as e:
-        st.error(
-            "Could not connect to MongoDB.\n\n"
-            "• Check `.streamlit/secrets.toml` (local) or Streamlit Cloud **Secrets** have:\n"
-            "  [mongo]\n  uri = \"...\"\n  db = \"energy\"\n  collection = \"elhub_production_2021\"\n"
-            "• Ensure your Atlas Network Access allows this app’s IP."
-        )
-        with st.expander("Technical details"):
-            st.exception(e)
+        st.error("Could not connect to MongoDB ..."); 
+        with st.expander("Technical details"): st.exception(e)
         st.stop()
 
     left, right = st.columns(2, gap="large")
@@ -472,8 +488,12 @@ elif page.startswith("4 –"):
             st.warning("No price areas found in MongoDB.")
             st.stop()
 
-        area = st.radio("Select price area", areas, index=0, horizontal=True)
+        # IMPORTANT: bind to the same key everywhere
+        idx = areas.index(st.session_state.global_area) if st.session_state.global_area in areas else 0
+        st.radio("Select price area", areas, index=idx, horizontal=True, key="global_area")
 
+        area = st.session_state.global_area
+        
         pie_df = _totals_for_area(area)
         if pie_df.empty:
             st.info("No data for the selected area.")
@@ -637,28 +657,19 @@ elif page.startswith("new A –"):
 
 
 # -------------------------------
-# PAGE 2: DATA TABLE (from Open-Meteo, not CSV)
+# PAGE 2: DATA TABLE (Open-Meteo 2021)
 # -------------------------------
 elif page.startswith("2 –"):
-    st.title("Weather Data Table (Open-Meteo 2021)")
+    area = st.session_state.global_area
+    st.title(f"Weather Data Table (Open-Meteo 2021) — {area}")
 
-    wx = st.session_state.get("wx2021")
+    wx = ensure_weather_for_selected_area()
     if wx is None or wx.empty:
-        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
+        st.info("Go to '4 – Elhub (Mongo)' to select an area (this triggers the weather fetch).")
         st.stop()
 
-    # Use API's time column name
-    if "timestamp" not in wx.columns:
-        st.error("Expected 'timestamp' column missing from weather data.")
-        st.stop()
-
-    st.write("First month of the dataset, row-wise sparklines per variable:")
-
-    # Extract first month subset
     first_month = wx["timestamp"].dt.to_period("M").min()
     df_first_month = wx[wx["timestamp"].dt.to_period("M") == first_month].copy()
-
-    # Build a reshaped table for sparkline column (drop time column)
     data_only = df_first_month.drop(columns=["timestamp"])
     reshaped = pd.DataFrame({
         "Variable": data_only.columns,
@@ -688,11 +699,9 @@ elif page.startswith("2 –"):
     for col_name in data_only.columns:
         c1, c2 = st.columns([1, 3])
         c1.write(col_name)
-        # Streamlit line_chart needs the time index
-        c2.line_chart(
-            df_first_month.set_index("timestamp")[[col_name]],
-            height=160,
-        )
+        c2.line_chart(df_first_month.set_index("timestamp")[[col_name]], height=160)
+
+
 
 
 # -------------------------------
