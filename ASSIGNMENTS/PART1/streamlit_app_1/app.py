@@ -522,7 +522,7 @@ elif page.startswith("new A –"):
     year = st.selectbox("Year", years, index=years.index(default_year))
 
     # Load production for chosen area/year
-    prod_df = load_elhub_for_area(area, year=year)
+    prod_df = load_elhub_for_area_2021(area, year=year)
     
     if prod_df.empty:
         st.warning(f"No production data for {area} in 2021.")
