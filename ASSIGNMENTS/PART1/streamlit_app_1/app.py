@@ -429,16 +429,63 @@ elif page.startswith("new A –"):
 
 
 # -------------------------------
-# PAGE 2: DATA TABLE (weather)
+# PAGE 2: DATA TABLE (from Open-Meteo, not CSV)
 # -------------------------------
 elif page.startswith("2 –"):
     st.title("Weather Data Table (Open-Meteo 2021)")
+
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to 'Area selector' to download weather for 2021 first.")
+        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
         st.stop()
 
-    st.dataframe(wx.head(200), use_container_width=True)
+    # Use API's time column name
+    if "timestamp" not in wx.columns:
+        st.error("Expected 'timestamp' column missing from weather data.")
+        st.stop()
+
+    st.write("First month of the dataset, row-wise sparklines per variable:")
+
+    # Extract first month subset
+    first_month = wx["timestamp"].dt.to_period("M").min()
+    df_first_month = wx[wx["timestamp"].dt.to_period("M") == first_month].copy()
+
+    # Build a reshaped table for sparkline column (drop time column)
+    data_only = df_first_month.drop(columns=["timestamp"])
+    reshaped = pd.DataFrame({
+        "Variable": data_only.columns,
+        "Trend": [data_only[c].tolist() for c in data_only.columns],
+    })
+
+    st.dataframe(
+        reshaped,
+        column_config={
+            "Variable": st.column_config.TextColumn("Variable"),
+            "Trend": st.column_config.LineChartColumn(
+                "First Month Series",
+                y_min=float(np.nanmin(data_only.values)),
+                y_max=float(np.nanmax(data_only.values)),
+                width="large",
+            ),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.write("Alternate rendering (mini line charts per row):")
+    col1, col2 = st.columns([1, 3])
+    col1.write("**Variable**")
+    col2.write("**First Month Trend**")
+    for col_name in data_only.columns:
+        c1, c2 = st.columns([1, 3])
+        c1.write(col_name)
+        # Streamlit line_chart needs the time index
+        c2.line_chart(
+            df_first_month.set_index("timestamp")[[col_name]],
+            height=160,
+        )
+
 
 # -------------------------------
 # PAGE 3: PLOTS (weather)
