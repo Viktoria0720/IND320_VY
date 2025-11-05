@@ -263,7 +263,30 @@ def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
     df["production"] = pd.to_numeric(df["production"], errors="coerce")
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
     return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
-
+@st.cache_data(show_spinner=False)
+def elhub_available_years(price_area: str) -> list[int]:
+    """
+    Fast Mongo aggregation that finds distinct years for a price area.
+    Works whether startTime is string or BSON Date.
+    """
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$group": {"_id": {"y": {"$year": "$time_dt"}}}},
+        {"$sort": {"_id.y": 1}},
+    ]
+    rows = list(coll.aggregate(pipeline))
+    return [r["_id"]["y"] for r in rows]
 # -------------------------------------------------------
 # ANALYTICS HELPERS (STL, Spectrogram, SPC, LOF)
 # -------------------------------------------------------
@@ -489,7 +512,18 @@ elif page.startswith("new A –"):
         st.session_state.area = sel
     area = st.session_state.area
 
-    prod_df = load_elhub_for_area_2021(area)
+    # Detect available years for this area, default to 2021 if present else latest
+    years = elhub_available_years(area)
+    if not years:
+        st.warning("No production data found for this area.")
+        st.stop()
+
+    default_year = 2021 if 2021 in years else years[-1]
+    year = st.selectbox("Year", years, index=years.index(default_year))
+
+    # Load production for chosen area/year
+    prod_df = load_elhub_for_area(area, year=year)
+    
     if prod_df.empty:
         st.warning(f"No production data for {area} in 2021.")
         st.stop()
