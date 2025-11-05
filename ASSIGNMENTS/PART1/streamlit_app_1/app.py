@@ -265,10 +265,7 @@ def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
     return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
 @st.cache_data(show_spinner=False)
 def elhub_available_years(price_area: str) -> list[int]:
-    """
-    Fast Mongo aggregation that finds distinct years for a price area.
-    Works whether startTime is string or BSON Date.
-    """
+    """Distinct years for an area, robust to startTime being string or BSON Date."""
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
@@ -287,6 +284,45 @@ def elhub_available_years(price_area: str) -> list[int]:
     ]
     rows = list(coll.aggregate(pipeline))
     return [r["_id"]["y"] for r in rows]
+
+
+@st.cache_data(show_spinner=True)
+def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
+    """
+    Load Elhub production for (area, year). Returns columns: time, area, group, production.
+    Robust to startTime string/BSON; converts time to Europe/Oslo, tz-naive.
+    """
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, year]}}},
+        {"$project": {
+            "_id": 0,
+            "time": "$time_dt",
+            "area": "$priceArea",
+            "group": "$productionGroup",
+            "production": "$quantityKwh",
+        }},
+        {"$sort": {"time": 1}},
+    ]
+    df = pd.DataFrame(list(coll.aggregate(pipeline, allowDiskUse=True)))
+    if df.empty:
+        return df
+    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True).dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
+    df["production"] = pd.to_numeric(df["production"], errors="coerce")
+    df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
+    return df.dropna(subset=["time", "production"]).sort_values("time")[["time","area","group","production"]]
+
 # -------------------------------------------------------
 # ANALYTICS HELPERS (STL, Spectrogram, SPC, LOF)
 # -------------------------------------------------------
@@ -501,37 +537,43 @@ elif page.startswith("4 –"):
                         trend_df.pivot(index="date", columns="productionGroup", values="quantityKwh")
                     )
 
-# PAGE new A: STL & Spectrogram (Elhub production, fixed 2021)
+# -------------------------------
+# PAGE new A: STL & Spectrogram (choose available year)
+# -------------------------------
 elif page.startswith("new A –"):
-    st.title("new A – STL & Spectrogram (Elhub production, 2021)")
+    st.title("new A – STL & Spectrogram (Elhub production)")
 
+    # Area stays in session and defaults to your previous choice
     area_codes = AREAS_DF["area"].tolist()
     default_idx = area_codes.index(st.session_state.area) if st.session_state.area in area_codes else 0
-    sel = st.selectbox("Area", area_codes, index=default_idx)
-    if sel != st.session_state.area:
-        st.session_state.area = sel
+    sel_area = st.selectbox("Area", area_codes, index=default_idx)
+    if sel_area != st.session_state.area:
+        st.session_state.area = sel_area
     area = st.session_state.area
 
-    # Detect available years for this area, default to 2021 if present else latest
+    # Figure out which years exist for this area
     years = elhub_available_years(area)
     if not years:
-        st.warning("No production data found for this area.")
+        st.error(f"No production data found for {area}.")
         st.stop()
 
+    # Prefer 2021 if present; otherwise use the latest available
     default_year = 2021 if 2021 in years else years[-1]
     year = st.selectbox("Year", years, index=years.index(default_year))
 
-    # Load production for chosen area/year
-    prod_df = load_elhub_for_area_2021(area, year=year)
-    
+    # Load data for (area, year)
+    with st.spinner(f"Loading Elhub production for {area} in {year} …"):
+        prod_df = load_elhub_for_area(area, year)
+
     if prod_df.empty:
-        st.warning(f"No production data for {area} in 2021.")
+        st.warning(f"No production data for {area} in {year}. Try another year.")
         st.stop()
 
     groups = sorted(prod_df["group"].dropna().unique().tolist())
     default_group = groups[0] if groups else "Hydro"
 
     tab1, tab2 = st.tabs(["STL", "Spectrogram"])
+
     with tab1:
         st.subheader("STL decomposition")
         c1, c2, c3, c4 = st.columns(4)
@@ -540,9 +582,12 @@ elif page.startswith("new A –"):
         seasonal = c3.slider("Seasonal smoother", 7, 61, 13, step=2)
         trend = c4.slider("Trend smoother", 21, 401, 101, step=2)
         robust = st.checkbox("Robust", value=True)
-        fig, _ = stl_decompose_production(prod_df, area=area, group=group,
-                                          period=int(period), seasonal=int(seasonal),
-                                          trend=int(trend), robust=robust)
+
+        fig, _ = stl_decompose_production(
+            prod_df, area=area, group=group,
+            period=int(period), seasonal=int(seasonal),
+            trend=int(trend), robust=robust
+        )
         st.pyplot(fig, use_container_width=True)
 
     with tab2:
@@ -552,9 +597,17 @@ elif page.startswith("new A –"):
                               index=groups.index(default_group), key="spec_group")
         window_len = c2.number_input("Window length (samples)", 24, 24*30, 24*7, step=24)
         overlap = st.slider("Window overlap", 0.0, 0.9, 0.5, 0.05)
-        fig = production_spectrogram(prod_df, area=area, group=group2,
-                                     window_len=int(window_len), overlap=float(overlap))
+
+        fig = production_spectrogram(
+            prod_df, area=area, group=group2,
+            window_len=int(window_len), overlap=float(overlap)
+        )
         st.pyplot(fig, use_container_width=True)
+
+    with st.expander("Data info"):
+        st.write(f"Area: **{area}**  •  Year: **{year}**  •  Rows: **{len(prod_df):,}**")
+        st.dataframe(prod_df.head(), use_container_width=True)
+
 
 # PAGE 2: DATA TABLE (Open-Meteo 2021)
 elif page.startswith("2 –"):
