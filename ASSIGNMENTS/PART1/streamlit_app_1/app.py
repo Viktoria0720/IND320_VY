@@ -152,17 +152,7 @@ def _list_price_areas() -> list[str]:
     rows = [r for r in rows if r is not None]
     return sorted(rows)
 
-@st.cache_data(show_spinner=False)
-def _totals_for_area(price_area: str) -> pd.DataFrame:
-    from pymongo import DESCENDING
-    coll = _get_mongo_collection()
-    pipeline = [
-        {"$match": {"priceArea": price_area}},
-        {"$group": {"_id": "$productionGroup", "quantityKwh": {"$sum": "$quantityKwh"}}},
-        {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
-        {"$sort": {"quantityKwh": DESCENDING}},
-    ]
-    return pd.DataFrame(_agg(coll, pipeline))
+
 
 
 @st.cache_data(show_spinner=False)
