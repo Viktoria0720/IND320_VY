@@ -8,3 +8,4 @@ plotly
 certifi
 scipy
 scikit-learn
+statsmodels
