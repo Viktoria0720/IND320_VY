@@ -162,7 +162,8 @@ def _totals_for_area(price_area: str) -> pd.DataFrame:
         {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
         {"$sort": {"quantityKwh": DESCENDING}},
     ]
-    return pd.DataFrame(list(coll.aggregate(pipeline)))
+    return pd.DataFrame(_agg(coll, pipeline))
+
 
 @st.cache_data(show_spinner=False)
 def _list_groups(price_area: str) -> list[str]:
@@ -177,6 +178,9 @@ def _list_year_months(price_area: str) -> list[str]:
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
+        {"$project": {  # keep only what we need to minimize memory
+            "startTime": 1, "_id": 0
+        }},
         {"$addFields": {
             "time_dt": {
                 "$cond": [
@@ -190,20 +194,25 @@ def _list_year_months(price_area: str) -> list[str]:
         {"$group": {"_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}}}},
         {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}},
     ]
-    rows = list(coll.aggregate(pipeline))
+    rows = _agg(coll, pipeline)
     return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
 
 @st.cache_data(show_spinner=True)
 def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -> pd.DataFrame:
     from pymongo import ASCENDING
     coll = _get_mongo_collection()
-
     if not groups:
         groups = _list_groups(price_area)
 
     ym = f"{year:04d}-{month:02d}"
     pipeline = [
         {"$match": {"priceArea": price_area, "productionGroup": {"$in": groups}}},
+        {"$project": {  # project early to shrink documents
+            "_id": 0,
+            "startTime": 1,
+            "productionGroup": 1,
+            "quantityKwh": 1,
+        }},
         {"$addFields": {
             "time_dt": {
                 "$cond": [
@@ -226,7 +235,8 @@ def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -
         {"$project": {"_id": 0, "date": "$_id.d", "productionGroup": "$_id.g", "quantityKwh": 1}},
         {"$sort": {"date": ASCENDING, "productionGroup": ASCENDING}},
     ]
-    return pd.DataFrame(list(coll.aggregate(pipeline)))
+    return pd.DataFrame(_agg(coll, pipeline))
+
 
 @st.cache_data(show_spinner=True)
 def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
@@ -263,12 +273,14 @@ def load_elhub_for_area_2021(price_area: str) -> pd.DataFrame:
     df["production"] = pd.to_numeric(df["production"], errors="coerce")
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
     return df.dropna(subset=["time","production"]).sort_values("time")[["time","area","group","production"]]
+
+
 @st.cache_data(show_spinner=False)
 def elhub_available_years(price_area: str) -> list[int]:
-    """Distinct years for an area, robust to startTime being string or BSON Date."""
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
+        {"$project": {"_id": 0, "startTime": 1}},
         {"$addFields": {
             "time_dt": {
                 "$cond": [
@@ -282,8 +294,9 @@ def elhub_available_years(price_area: str) -> list[int]:
         {"$group": {"_id": {"y": {"$year": "$time_dt"}}}},
         {"$sort": {"_id.y": 1}},
     ]
-    rows = list(coll.aggregate(pipeline))
+    rows = _agg(coll, pipeline)
     return [r["_id"]["y"] for r in rows]
+
 
 
 @st.cache_data(show_spinner=True)
@@ -322,6 +335,10 @@ def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
     df["production"] = pd.to_numeric(df["production"], errors="coerce")
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
     return df.dropna(subset=["time", "production"]).sort_values("time")[["time","area","group","production"]]
+
+def _agg(coll, pipeline):
+    """Aggregate with disk spill enabled."""
+    return list(coll.aggregate(pipeline, allowDiskUse=True))
 
 # -------------------------------------------------------
 # ANALYTICS HELPERS (STL, Spectrogram, SPC, LOF)
