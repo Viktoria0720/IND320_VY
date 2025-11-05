@@ -145,7 +145,17 @@ def _get_mongo_collection():
     db = client[db_name]
     return db[coll_name]
 DASHBOARD_YEAR = 2021  # << use this everywhere on Page 4
-
+@st.cache_data(show_spinner=False)
+def _totals_for_area(price_area: str) -> pd.DataFrame:
+    from pymongo import DESCENDING
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$group": {"_id": "$productionGroup", "quantityKwh": {"$sum": "$quantityKwh"}}},
+        {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
+        {"$sort": {"quantityKwh": DESCENDING}},
+    ]
+    return pd.DataFrame(_agg(coll, pipeline))
 @st.cache_data(show_spinner=False)
 def _totals_for_area_year(price_area: str, year: int = DASHBOARD_YEAR) -> pd.DataFrame:
     """Sum quantityKwh by productionGroup for a price area in a given YEAR."""
