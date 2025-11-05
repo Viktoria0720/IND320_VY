@@ -126,23 +126,36 @@ def _get_mongo_collection():
     db = client[db_name]
     return db[coll_name]
 
-@st.cache_data(show_spinner=True)
-def load_elhub_for_area(
-    price_area: str,
-    year: Optional[int] = 2021,  
-) -> pd.DataFrame:
+@st.cache_data(show_spinner=False)
+def elhub_available_years(price_area: str) -> list[int]:
     """
-    Loads Elhub production for a given price area from Mongo
-    and returns tidy columns: time, area, group, production.
+    Fast Mongo aggregation that finds distinct years for a price area.
+    Works whether startTime is string or BSON Date.
     """
     coll = _get_mongo_collection()
-    proj = {
-        "_id": 0,
-        "startTime": 1,        # time
-        "priceArea": 1,        # area
-        "productionGroup": 1,  # group
-        "quantityKwh": 1,      # production
-    }
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$group": {"_id": {"y": {"$year": "$time_dt"}}}},
+        {"$sort": {"_id.y": 1}},
+    ]
+    rows = list(coll.aggregate(pipeline))
+    return [r["_id"]["y"] for r in rows]
+
+
+@st.cache_data(show_spinner=True)
+def load_elhub_for_area(price_area: str, year: int | None = 2021) -> pd.DataFrame:
+    coll = _get_mongo_collection()
+    proj = {"_id": 0, "startTime": 1, "priceArea": 1, "productionGroup": 1, "quantityKwh": 1}
     q = {"priceArea": price_area}
     rows = list(coll.find(q, proj))
     df = pd.DataFrame(rows)
@@ -150,22 +163,20 @@ def load_elhub_for_area(
         return df
 
     df = df.rename(columns={
-        "startTime": "time",
-        "priceArea": "area",
-        "productionGroup": "group",
-        "quantityKwh": "production",
+        "startTime": "time", "priceArea": "area",
+        "productionGroup": "group", "quantityKwh": "production",
     })
-    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)
-    df["time"] = df["time"].dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
+    df["time"] = pd.to_datetime(df["time"], errors="coerce", utc=True)\
+                   .dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
     df["production"] = pd.to_numeric(df["production"], errors="coerce")
-    # Normalize group labels
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
 
     if year is not None:
         df = df[df["time"].dt.year == year]
 
-    df = df.dropna(subset=["time", "production"]).sort_values("time")
-    return df[["time", "area", "group", "production"]]
+    return df.dropna(subset=["time", "production"])\
+             .sort_values("time")[["time","area","group","production"]]
+
 
 # =========================================================
 # ANALYTICS HELPERS (STL, Spectrogram, SPC, LOF)
@@ -361,11 +372,25 @@ elif page.startswith("new A –"):
         st.info("Choose a price area on the 'Area selector' page first.")
         st.stop()
 
-    area = st.selectbox("Area", AREAS_DF["area"].tolist(),
-                        index=AREAS_DF["area"].tolist().index(st.session_state.area))
-    prod_df = load_elhub_for_area(area, year=2021)  # change to 2025 if your DB year is 2025
+    # Area selector (default to global area state)
+    area = st.selectbox(
+        "Area", AREAS_DF["area"].tolist(),
+        index=AREAS_DF["area"].tolist().index(st.session_state.area)
+    )
+
+    # Detect available years for this area, default to 2021 if present else latest
+    years = elhub_available_years(area)
+    if not years:
+        st.warning("No production data found for this area.")
+        st.stop()
+
+    default_year = 2021 if 2021 in years else years[-1]
+    year = st.selectbox("Year", years, index=years.index(default_year))
+
+    # Load production for chosen area/year
+    prod_df = load_elhub_for_area(area, year=year)
     if prod_df.empty:
-        st.warning("No production data for the selected filters/year.")
+        st.warning(f"No production data for {area} in {year}. Try another year.")
         st.stop()
 
     groups = sorted(prod_df["group"].dropna().unique().tolist())
@@ -390,14 +415,18 @@ elif page.startswith("new A –"):
     with tab2:
         st.subheader("Spectrogram")
         c1, c2 = st.columns(2)
-        group = c1.selectbox("Production group", options=groups,
-                             index=groups.index(default_group), key="spec_group")
+        group2 = c1.selectbox("Production group", options=groups,
+                              index=groups.index(default_group), key="spec_group")
         window_len = c2.number_input("Window length (samples)", 24, 24*30, 24*7, step=24)
         overlap = st.slider("Window overlap", 0.0, 0.9, 0.5, 0.05)
 
-        fig = production_spectrogram(prod_df, area=area, group=group,
+        fig = production_spectrogram(prod_df, area=area, group=group2,
                                      window_len=int(window_len), overlap=float(overlap))
         st.pyplot(fig, use_container_width=True)
+
+    with st.expander("Data info"):
+        st.write(f"Rows loaded: {len(prod_df):,}  |  Years available for {area}: {years}")
+
 
 # -------------------------------
 # PAGE 2: DATA TABLE (weather)
