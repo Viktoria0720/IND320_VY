@@ -144,7 +144,14 @@ def _get_mongo_collection():
     client = MongoClient(uri, tls=True, tlsCAFile=certifi.where())
     db = client[db_name]
     return db[coll_name]
-DASHBOARD_YEAR = 2021  # << use this everywhere on Page 4
+
+@st.cache_data(show_spinner=False)
+def _list_price_areas() -> list[str]:
+    coll = _get_mongo_collection()
+    rows = coll.distinct("priceArea")
+    rows = [r for r in rows if r is not None]
+    return sorted(rows)
+
 @st.cache_data(show_spinner=False)
 def _totals_for_area(price_area: str) -> pd.DataFrame:
     from pymongo import DESCENDING
@@ -156,64 +163,6 @@ def _totals_for_area(price_area: str) -> pd.DataFrame:
         {"$sort": {"quantityKwh": DESCENDING}},
     ]
     return pd.DataFrame(_agg(coll, pipeline))
-@st.cache_data(show_spinner=False)
-def _totals_for_area_year(price_area: str, year: int = DASHBOARD_YEAR) -> pd.DataFrame:
-    """Sum quantityKwh by productionGroup for a price area in a given YEAR."""
-    from pymongo import DESCENDING
-    coll = _get_mongo_collection()
-    pipeline = [
-        {"$match": {"priceArea": price_area}},
-        {"$project": {"_id": 0, "productionGroup": 1, "quantityKwh": 1, "startTime": 1}},
-        {"$addFields": {
-            "time_dt": {
-                "$cond": [
-                    {"$eq": [{"$type": "$startTime"}, "date"]},
-                    "$startTime",
-                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
-                ]
-            }
-        }},
-        {"$match": {"time_dt": {"$ne": None}}},
-        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, year]}}},
-        {"$group": {"_id": "$productionGroup", "quantityKwh": {"$sum": "$quantityKwh"}}},
-        {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
-        {"$sort": {"quantityKwh": DESCENDING}},
-    ]
-    return pd.DataFrame(_agg(coll, pipeline))
-
-@st.cache_data(show_spinner=False)
-def _list_months_for_year(price_area: str, year: int = DASHBOARD_YEAR) -> list[str]:
-    """Return available months in ['YYYY-MM', ...] for a given price area and YEAR."""
-    from pymongo import ASCENDING
-    coll = _get_mongo_collection()
-    pipeline = [
-        {"$match": {"priceArea": price_area}},
-        {"$project": {"_id": 0, "startTime": 1}},
-        {"$addFields": {
-            "time_dt": {
-                "$cond": [
-                    {"$eq": [{"$type": "$startTime"}, "date"]},
-                    "$startTime",
-                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
-                ]
-            }
-        }},
-        {"$match": {"time_dt": {"$ne": None}}},
-        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, year]}}},
-        {"$group": {"_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}}}},
-        {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}},
-    ]
-    rows = _agg(coll, pipeline)
-    return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
-
-@st.cache_data(show_spinner=False)
-def _list_price_areas() -> list[str]:
-    coll = _get_mongo_collection()
-    rows = coll.distinct("priceArea")
-    rows = [r for r in rows if r is not None]
-    return sorted(rows)
-
-
 
 
 @st.cache_data(show_spinner=False)
@@ -538,7 +487,7 @@ elif page.startswith("4 –"):
                 st.dataframe(pie_df, use_container_width=True)
 
     with right:
-        st.markdown("**Monthly Trend (2021)**")
+        st.markdown("**Monthly Trend**")
         groups_all = _list_groups(area)
         if hasattr(st, "pills"):
             selected_groups = st.pills(
@@ -554,14 +503,13 @@ elif page.startswith("4 –"):
                 default=groups_all[:3] if len(groups_all) > 3 else groups_all,
             )
 
-        ym_list = _list_months_for_year(area, DASHBOARD_YEAR)  # << only 2021 months
+        ym_list = _list_year_months(area)
         if not ym_list:
-            st.info(f"No months found for {area} in {DASHBOARD_YEAR}.")
+            st.info("No months found for the selected area.")
         else:
             label = st.selectbox("Month", ym_list, index=0)  # "YYYY-MM"
             y_sel, m_sel = map(int, label.split("-"))
-
-            trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)  # year passed here
+            trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)
             if trend_df.empty:
                 st.info("No records for these filters.")
             else:
