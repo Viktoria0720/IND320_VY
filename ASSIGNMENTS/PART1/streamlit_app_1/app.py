@@ -177,6 +177,105 @@ def load_elhub_for_area(price_area: str, year: int | None = 2021) -> pd.DataFram
     return df.dropna(subset=["time", "production"])\
              .sort_values("time")[["time","area","group","production"]]
 
+# =========================================================
+# MONGO HELPERS (Elhub dashboard page)
+# =========================================================
+
+@st.cache_data(show_spinner=False)
+def _list_price_areas() -> list[str]:
+    """Return distinct price areas from Mongo."""
+    coll = _get_mongo_collection()
+    rows = coll.distinct("priceArea")
+    rows = [r for r in rows if r is not None]
+    return sorted(rows)
+
+@st.cache_data(show_spinner=False)
+def _totals_for_area(price_area: str) -> pd.DataFrame:
+    """Sum quantityKwh by productionGroup within a price area."""
+    from pymongo import DESCENDING
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$group": {"_id": "$productionGroup", "quantityKwh": {"$sum": "$quantityKwh"}}},
+        {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
+        {"$sort": {"quantityKwh": DESCENDING}},
+    ]
+    return pd.DataFrame(list(coll.aggregate(pipeline)))
+
+@st.cache_data(show_spinner=False)
+def _list_groups(price_area: str) -> list[str]:
+    """Distinct production groups available in a price area."""
+    coll = _get_mongo_collection()
+    groups = coll.distinct("productionGroup", {"priceArea": price_area})
+    groups = [g for g in groups if g is not None]
+    return sorted(groups)
+
+@st.cache_data(show_spinner=False)
+def _list_year_months(price_area: str) -> list[str]:
+    """
+    Return available months as ['YYYY-MM', ...] for a given price area.
+    Handles startTime as BSON Date or ISO string.
+    """
+    from pymongo import ASCENDING
+    coll = _get_mongo_collection()
+    pipeline = [
+        {"$match": {"priceArea": price_area}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$group": {"_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}}}},
+        {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}},
+    ]
+    rows = list(coll.aggregate(pipeline))
+    return [f'{r["_id"]["y"]:04d}-{r["_id"]["m"]:02d}' for r in rows]
+
+@st.cache_data(show_spinner=True)
+def _monthly_series(price_area: str, groups: list[str], year: int, month: int) -> pd.DataFrame:
+    """
+    Aggregate **daily totals** per productionGroup within the selected month.
+    Handles startTime as BSON Date or ISO string.
+    """
+    from pymongo import ASCENDING
+    coll = _get_mongo_collection()
+
+    if not groups:
+        groups = _list_groups(price_area)
+
+    ym = f"{year:04d}-{month:02d}"
+    pipeline = [
+        {"$match": {"priceArea": price_area, "productionGroup": {"$in": groups}}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$addFields": {
+            "ym": {"$dateToString": {"format": "%Y-%m", "date": "$time_dt"}},
+            "d":  {"$dateToString": {"format": "%Y-%m-%d", "date": "$time_dt"}},
+        }},
+        {"$match": {"ym": ym}},
+        {"$group": {
+            "_id": {"d": "$d", "g": "$productionGroup"},
+            "quantityKwh": {"$sum": "$quantityKwh"},
+        }},
+        {"$project": {"_id": 0, "date": "$_id.d", "productionGroup": "$_id.g", "quantityKwh": 1}},
+        {"$sort": {"date": ASCENDING, "productionGroup": ASCENDING}},
+    ]
+    return pd.DataFrame(list(coll.aggregate(pipeline)))
+
+
 
 # =========================================================
 # ANALYTICS HELPERS (STL, Spectrogram, SPC, LOF)
@@ -348,19 +447,128 @@ if page.startswith("1 –"):
 # PAGE 4: AREA SELECTOR (drives weather download)
 # -------------------------------
 elif page.startswith("4 –"):
-    st.title("Select Electricity Price Area")
-    area_codes = AREAS_DF["area"].tolist()
-    default_idx = area_codes.index(st.session_state.area) if st.session_state.area in area_codes else 0
-    area = st.radio("Price area", area_codes, index=default_idx, horizontal=True)
-    st.session_state.area = area
+    st.title("Elhub – Production per Group (MongoDB)")
 
-    row = AREAS_DF[AREAS_DF["area"] == area].iloc[0]
-    with st.spinner(f"Downloading ERA5 hourly weather for {row.city} (2021) from Open-Meteo..."):
-        wx = get_era5_hourly(row.lat, row.lon, 2021)
-    st.session_state.wx2021 = wx
+    # Try a small probe to show actionable errors early
+    try:
+        _ = _get_mongo_collection().estimated_document_count()
+    except Exception as e:
+        st.error(
+            "Could not connect to MongoDB.\n\n"
+            "• Check `.streamlit/secrets.toml` (local) or Streamlit Cloud **Secrets** have:\n"
+            "  [mongo]\n  uri = \"...\"\n  db = \"energy\"\n  collection = \"elhub_production_2021\"\n"
+            "• Ensure your Atlas Network Access allows this app’s IP."
+        )
+        with st.expander("Technical details"):
+            st.exception(e)
+        st.stop()
 
-    st.success(f"Downloaded {len(wx)} rows for {row.city} / {area} (2021).")
-    st.dataframe(wx.head(24), use_container_width=True)
+    left, right = st.columns(2, gap="large")
+
+    with left:
+        st.subheader("Distribution by Production Group")
+        areas = _list_price_areas()
+        if not areas:
+            st.warning("No price areas found in MongoDB.")
+            st.stop()
+
+        area = st.radio("Select price area", areas, index=0, horizontal=True)
+
+        pie_df = _totals_for_area(area)
+        if pie_df.empty:
+            st.info("No data for the selected area.")
+        else:
+            # Prefer Altair/Plotly if available; fallback to dataframe
+            try:
+                import altair as alt
+                chart = (
+                    alt.Chart(pie_df)
+                    .mark_arc()
+                    .encode(
+                        theta="quantityKwh:Q",
+                        color=alt.Color("productionGroup:N", legend=alt.Legend(title="Group")),
+                        tooltip=[
+                            alt.Tooltip("productionGroup:N", title="Group"),
+                            alt.Tooltip("quantityKwh:Q", title="kWh", format=",.0f"),
+                        ],
+                    )
+                    .properties(height=360)
+                )
+                st.altair_chart(chart, use_container_width=True)
+            except Exception:
+                try:
+                    import plotly.express as px
+                    fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception:
+                    st.dataframe(pie_df, use_container_width=True)
+
+    with right:
+        st.subheader("Monthly Trend")
+
+        groups_all = _list_groups(area)
+        if hasattr(st, "pills"):
+            selected_groups = st.pills(
+                "Production groups",
+                options=groups_all,
+                selection_mode="multi",
+                default=groups_all[:3] if len(groups_all) > 3 else groups_all,
+            )
+        else:
+            selected_groups = st.multiselect(
+                "Production groups",
+                options=groups_all,
+                default=groups_all[:3] if len(groups_all) > 3 else groups_all,
+            )
+
+        ym_list = _list_year_months(area)
+        if not ym_list:
+            st.info("No months found for the selected area.")
+        else:
+            label = st.selectbox("Month", ym_list, index=0)  # "YYYY-MM"
+            y_sel, m_sel = map(int, label.split("-"))
+
+            trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)
+            if trend_df.empty:
+                st.info("No records for these filters.")
+            else:
+                trend_df["date"] = pd.to_datetime(trend_df["date"])
+                # Try Altair, then Plotly, then fallback
+                try:
+                    import altair as alt
+                    line = (
+                        alt.Chart(trend_df)
+                        .mark_line(point=True)
+                        .encode(
+                            x=alt.X("date:T", title="Date"),
+                            y=alt.Y("quantityKwh:Q", title="Daily Total (kWh)"),
+                            color=alt.Color("productionGroup:N", legend=alt.Legend(title="Group")),
+                            tooltip=[
+                                alt.Tooltip("productionGroup:N", title="Group"),
+                                alt.Tooltip("date:T", title="Date"),
+                                alt.Tooltip("quantityKwh:Q", title="kWh", format=",.0f"),
+                            ],
+                        )
+                        .properties(height=360)
+                    )
+                    st.altair_chart(line, use_container_width=True)
+                except Exception:
+                    try:
+                        import plotly.express as px
+                        fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
+                        fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
+                        st.plotly_chart(fig2, use_container_width=True)
+                    except Exception:
+                        pivot = trend_df.pivot(index="date", columns="productionGroup", values="quantityKwh")
+                        st.line_chart(pivot)
+
+    with st.expander("Data source"):
+        st.markdown(
+            "Dataset: **Elhub** `PRODUCTION_PER_GROUP_MBA_HOUR` → ETL to MongoDB Atlas.\n\n"
+            "- `quantityKwh` summed as shown\n"
+            "- Times handled via `$dateFromString` when needed\n"
+            "- Monthly chart shows **daily totals** per production group"
+        )
 
 # -------------------------------
 # PAGE new A: STL & Spectrogram (tabs)
