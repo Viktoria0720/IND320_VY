@@ -112,13 +112,7 @@ def get_era5_hourly(
 # -------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def _get_mongo_collection():
-    """
-    Requires `.streamlit/secrets.toml`:
-    [mongo]
-    uri = "..."
-    db = "energy"
-    collection = "elhub_production_2021"
-    """
+   
     try:
         from pymongo import MongoClient
         import certifi
@@ -412,13 +406,13 @@ def lof_precip_anomalies(df: pd.DataFrame, contamination: float = 0.01, n_neighb
 # SIDEBAR NAVIGATION (assignment order)
 # -------------------------------------------------------
 PAGES = [
-    "1 – Home",
-    "4 – Area selector",          # ← this page also shows Mongo pie + monthly trend
-    "new A – STL & Spectrogram",
-    "2 – Data Table",
-    "3 – Plots",
-    "new B – Outliers & Anomalies",
-    "5 – To be continued",
+    "Home",
+    "Electricity Production",          
+    "STL & Spectrogram",
+    "Data Table",
+    "Plots",
+    "Outliers & Anomalies",
+    "o be continued",
 ]
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", PAGES, index=0)
@@ -428,13 +422,13 @@ page = st.sidebar.radio("Go to", PAGES, index=0)
 # -------------------------------------------------------
 
 # PAGE 1: HOME
-if page.startswith("1 –"):
+if page.startswith("Home"):
     st.title("Welcome to the IND320 App 🌦️⚡")
-    st.write("Select an area on **Page 4**. That selection drives the weather download (2021) and the Mongo views.")
+    st.write("Select an area on **Page 4**. That selection drives the weather download and the Mongo views.")
     st.dataframe(AREAS_DF[["area","city","lon","lat"]], use_container_width=True)
 
 # PAGE 4: AREA SELECTOR (drives weather + shows Mongo pie & trend)
-elif page.startswith("4 –"):
+elif page.startswith("Electricity Production"):
     st.title("Select Electricity Price Area")
     area_codes = AREAS_DF["area"].tolist()
     default_idx = area_codes.index(st.session_state.area) if st.session_state.area in area_codes else 0
@@ -540,10 +534,10 @@ elif page.startswith("4 –"):
                     )
 
 # -------------------------------
-# PAGE new A: STL & Spectrogram (choose available year)
+# PAGE new A: STL & Spectrogram 
 # -------------------------------
 elif page.startswith("new A –"):
-    st.title("new A – STL & Spectrogram (Elhub production)")
+    st.title("STL")
 
     # Area stays in session and defaults to your previous choice
     area_codes = AREAS_DF["area"].tolist()
@@ -612,7 +606,7 @@ elif page.startswith("new A –"):
 
 
 # PAGE 2: DATA TABLE (Open-Meteo 2021)
-elif page.startswith("2 –"):
+elif page.startswith("Data Table"):
     area = st.session_state.area
     st.title(f"Weather Data Table (Open-Meteo 2021) — {area}")
     wx = st.session_state.get("wx2021")
@@ -654,7 +648,7 @@ elif page.startswith("2 –"):
         c2.line_chart(df_first_month.set_index("timestamp")[[col_name]], height=160)
 
 # PAGE 3: PLOTS (weather)
-elif page.startswith("3 –"):
+elif page.startswith("Plots"):
     area = st.session_state.area
     st.title(f"Weather Plots (Open-Meteo 2021) — {area}")
     wx = st.session_state.get("wx2021")
@@ -682,7 +676,7 @@ elif page.startswith("3 –"):
     st.pyplot(fig, use_container_width=True)
 
 # PAGE new B: Outliers & Anomalies (tabs on weather)
-elif page.startswith("new B –"):
+elif page.startswith("Outliers & Anomalies"):
     area = st.session_state.area
     st.title(f"new B – Outliers & Anomalies (Weather 2021) — {area}")
     wx = st.session_state.get("wx2021")
@@ -712,7 +706,7 @@ elif page.startswith("new B –"):
         st.write("Anomaly samples:", anoms_df.head(50))
 
 # PAGE 5: DUMMY / CLOSING
-elif page.startswith("5 –"):
+elif page.startswith("o be continued"):
     st.title("Keep Calm and Don’t Give Up on Coding 💻")
     st.markdown(
         "<div style='background-color:#245; color:white; font-size:40px; "
