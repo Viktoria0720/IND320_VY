@@ -412,7 +412,7 @@ PAGES = [
     "Data Table",
     "Plots",
     "Outliers & Anomalies",
-    "o be continued",
+    "To be continued",
 ]
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", PAGES, index=0)
@@ -706,7 +706,7 @@ elif page.startswith("Outliers & Anomalies"):
         st.write("Anomaly samples:", anoms_df.head(50))
 
 # PAGE 5: DUMMY / CLOSING
-elif page.startswith("o be continued"):
+elif page.startswith("To be continued"):
     st.title("Keep Calm and Don’t Give Up on Coding 💻")
     st.markdown(
         "<div style='background-color:#245; color:white; font-size:40px; "
