@@ -536,7 +536,7 @@ elif page.startswith("Electricity Production"):
 # -------------------------------
 # PAGE new A: STL & Spectrogram 
 # -------------------------------
-elif page.startswith("new A –"):
+elif page.startswith("STL & Spectrogram"):
     st.title("STL")
 
     # Area stays in session and defaults to your previous choice
