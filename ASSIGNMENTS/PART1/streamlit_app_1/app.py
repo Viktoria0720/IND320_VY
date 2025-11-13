@@ -424,7 +424,7 @@ page = st.sidebar.radio("Go to", PAGES, index=0)
 # PAGE 1: HOME
 if page.startswith("Home"):
     st.title("Welcome to the IND320 App 🌦️⚡")
-    st.write("Select an area on **Page 4**. That selection drives the weather download and the Mongo views.")
+    st.write("Select an area on **Electricity Production**. That selection drives the weather download and the Mongo views.")
     st.dataframe(AREAS_DF[["area","city","lon","lat"]], use_container_width=True)
 
 # PAGE 4: AREA SELECTOR (drives weather + shows Mongo pie & trend)
