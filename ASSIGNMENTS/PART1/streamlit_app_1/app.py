@@ -110,6 +110,7 @@ def get_era5_hourly(
 # -------------------------------------------------------
 # MONGO (Elhub) HELPERS
 # -------------------------------------------------------
+DASHBOARD_YEAR = 2021 # year for pie + monthly trend
 @st.cache_resource(show_spinner=False)
 def _get_mongo_collection():
    
