@@ -147,11 +147,24 @@ def _list_price_areas() -> list[str]:
     return sorted(rows)
 
 @st.cache_data(show_spinner=False)
-def _totals_for_area(price_area: str) -> pd.DataFrame:
+def _totals_for_area_year(price_area: str, year: int = DASHBOARD_YEAR) -> pd.DataFrame:
+    """Sum quantityKwh by productionGroup for a price area in a given YEAR."""
     from pymongo import DESCENDING
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
+        {"$project": {"_id": 0, "startTime": 1, "productionGroup": 1, "quantityKwh": 1}},
+        {"$addFields": {
+            "time_dt": {
+                "$cond": [
+                    {"$eq": [{"$type": "$startTime"}, "date"]},
+                    "$startTime",
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}},
+                ]
+            }
+        }},
+        {"$match": {"time_dt": {"$ne": None}}},
+        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, year]}}},
         {"$group": {"_id": "$productionGroup", "quantityKwh": {"$sum": "$quantityKwh"}}},
         {"$project": {"_id": 0, "productionGroup": "$_id", "quantityKwh": 1}},
         {"$sort": {"quantityKwh": DESCENDING}},
@@ -167,24 +180,24 @@ def _list_groups(price_area: str) -> list[str]:
     return sorted(groups)
 
 @st.cache_data(show_spinner=False)
-def _list_year_months(price_area: str) -> list[str]:
+def _list_months_for_year(price_area: str, year: int = DASHBOARD_YEAR) -> list[str]:
+    """Return months in ['YYYY-MM', ...] for a price area and YEAR."""
     from pymongo import ASCENDING
     coll = _get_mongo_collection()
     pipeline = [
         {"$match": {"priceArea": price_area}},
-        {"$project": {  # keep only what we need to minimize memory
-            "startTime": 1, "_id": 0
-        }},
+        {"$project": {"_id": 0, "startTime": 1}},
         {"$addFields": {
             "time_dt": {
                 "$cond": [
                     {"$eq": [{"$type": "$startTime"}, "date"]},
                     "$startTime",
-                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}}
+                    {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}},
                 ]
             }
         }},
         {"$match": {"time_dt": {"$ne": None}}},
+        {"$match": {"$expr": {"$eq": [{"$year": "$time_dt"}, year]}}},
         {"$group": {"_id": {"y": {"$year": "$time_dt"}, "m": {"$month": "$time_dt"}}}},
         {"$sort": {"_id.y": ASCENDING, "_id.m": ASCENDING}},
     ]
@@ -445,7 +458,6 @@ elif page.startswith("Electricity Production"):
     # ---- Mongo pie + monthly trend (same page) ----
     st.divider()
     st.subheader("Elhub – Production overview (MongoDB)")
-    # Connection probe
     try:
         _ = _get_mongo_collection().estimated_document_count()
     except Exception as e:
@@ -455,10 +467,11 @@ elif page.startswith("Electricity Production"):
 
     left, right = st.columns(2, gap="large")
     with left:
-        st.markdown("**Distribution by Production Group**")
-        pie_df = _totals_for_area(area)
+        st.markdown("**Distribution by Production Group (2021)**")
+        
+        pie_df = _totals_for_area_year(area, DASHBOARD_YEAR)
         if pie_df.empty:
-            st.info("No data for the selected area.")
+            st.info("No 2021 data for the selected area.")
         else:
             if USE_ALTAIR and alt is not None:
                 chart = (
@@ -479,9 +492,10 @@ elif page.startswith("Electricity Production"):
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.dataframe(pie_df, use_container_width=True)
+            st.caption(f"Year: **{DASHBOARD_YEAR}**")
 
     with right:
-        st.markdown("**Monthly Trend**")
+        st.markdown("**Monthly Trend (2021)**")
         groups_all = _list_groups(area)
         if hasattr(st, "pills"):
             selected_groups = st.pills(
@@ -497,13 +511,14 @@ elif page.startswith("Electricity Production"):
                 default=groups_all[:3] if len(groups_all) > 3 else groups_all,
             )
 
-        ym_list = _list_year_months(area)
+        
+        ym_list = _list_months_for_year(area, DASHBOARD_YEAR)
         if not ym_list:
-            st.info("No months found for the selected area.")
+            st.info(f"No months found for {area} in {DASHBOARD_YEAR}.")
         else:
             label = st.selectbox("Month", ym_list, index=0)  # "YYYY-MM"
             y_sel, m_sel = map(int, label.split("-"))
-            trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)
+            trend_df = _monthly_series(area, selected_groups, y_sel, m_sel)  
             if trend_df.empty:
                 st.info("No records for these filters.")
             else:
