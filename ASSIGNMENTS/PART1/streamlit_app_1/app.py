@@ -355,7 +355,52 @@ def stl_decompose_production(
         raise ValueError(f"No production for area={area}, group={group}")
     y = pd.Series(df["production"].to_numpy(float), index=pd.to_datetime(df["time"]))
     res = STL(y, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
-    fig = res.plot(); fig.set_size_inches(11, 5); fig.suptitle(f"STL – {area}/{group}"); fig.tight_layout()
+
+    # Generate default STL plot and apply sensible axis boundaries
+    fig = res.plot()
+    fig.set_size_inches(11, 5)
+
+    # Try to extract components; fall back gracefully if missing
+    try:
+        trend_arr = np.asarray(res.trend)
+    except Exception:
+        trend_arr = None
+    try:
+        seasonal_arr = np.asarray(res.seasonal)
+    except Exception:
+        seasonal_arr = None
+    try:
+        resid_arr = np.asarray(res.resid)
+    except Exception:
+        resid_arr = None
+
+    # Observed + trend limits: combine observed series and trend (if present)
+    vals = [np.asarray(y).ravel()]
+    if trend_arr is not None and getattr(trend_arr, "size", 0) > 0:
+        vals.append(trend_arr.ravel())
+    all_vals = np.concatenate(vals) if vals else np.asarray(y)
+    y_min = np.nanmin(all_vals)
+    y_max = np.nanmax(all_vals)
+    margin = max(1e-8, (y_max - y_min) * 0.05)
+
+    # Apply axis limits by inspecting axis titles so we target Seasonal/Residual specifically
+    for ax in fig.axes:
+        title = (ax.get_title() or "").lower()
+        if "seasonal" in title:
+            if seasonal_arr is not None and getattr(seasonal_arr, "size", 0) > 0:
+                m = float(np.nanmax(np.abs(seasonal_arr))) * 1.1
+                ax.set_ylim(-m, m)
+        elif "resid" in title or "residual" in title:
+            if resid_arr is not None and getattr(resid_arr, "size", 0) > 0:
+                m = float(np.nanmax(np.abs(resid_arr))) * 1.1
+                ax.set_ylim(-m, m)
+        else:
+            # Observed / Trend plot
+            ax.set_ylim(y_min - margin, y_max + margin)
+
+    # Place suptitle and tighten layout leaving space for the title
+    fig.suptitle(f"STL – {area}/{group}")
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, res
 
 def production_spectrogram(
