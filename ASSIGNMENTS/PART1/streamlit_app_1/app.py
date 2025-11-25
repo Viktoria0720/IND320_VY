@@ -391,16 +391,30 @@ def spc_outliers_temperature(df: pd.DataFrame, dct_cutoff: float = 0.02, n_sigma
     ax.scatter(out_df["timestamp"], out_df["temperature_2m"], s=10, color='crimson', label="Outlier")
     ax.set_title("Temperature & SPC Outliers (DCT high-pass)"); ax.set_ylabel("°C")
 
-    # Set y-axis boundaries based on observed data with a small margin
+    # Also plot the SATV (high-pass) series and show upper/lower bounds
     try:
+        satv_vals = satv_s.to_numpy(float)
+        ax.plot(ts["timestamp"], satv_vals, linewidth=0.8, color='tab:green', label='SATV (high-pass)')
+        ax.axhline(upper, color='crimson', linestyle='--', linewidth=0.8, label='SATV upper')
+        ax.axhline(lower, color='crimson', linestyle='--', linewidth=0.8, label='SATV lower')
+
+        # Compute combined y-limits to include temperature, SATV and bounds
         vals = ts["temperature_2m"].to_numpy(float)
-        y_min = float(np.nanmin(vals))
-        y_max = float(np.nanmax(vals))
+        combined = np.concatenate([np.asarray(vals).ravel(), np.asarray(satv_vals).ravel(), np.array([upper, lower])])
+        y_min = float(np.nanmin(combined))
+        y_max = float(np.nanmax(combined))
         margin = max(1e-3, (y_max - y_min) * 0.05)
         ax.set_ylim(y_min - margin, y_max + margin)
     except Exception:
-        # If computation fails, leave matplotib defaults
-        pass
+        # If computation fails, leave matplotlib defaults
+        try:
+            vals = ts["temperature_2m"].to_numpy(float)
+            y_min = float(np.nanmin(vals))
+            y_max = float(np.nanmax(vals))
+            margin = max(1e-3, (y_max - y_min) * 0.05)
+            ax.set_ylim(y_min - margin, y_max + margin)
+        except Exception:
+            pass
 
     ax.legend(); fig.tight_layout()
     return fig, out_df, pd.DataFrame([{
