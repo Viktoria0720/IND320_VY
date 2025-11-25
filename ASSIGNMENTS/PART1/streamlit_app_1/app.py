@@ -380,8 +380,7 @@ def spc_outliers_temperature(
     df: pd.DataFrame,
     dct_cutoff: float = 0.02,
     n_sigma: float = 3.5,
-    spc_stats: dict | None = None,   # optional: reuse precomputed whole-year stats
-):
+    spc_stats: dict | None = None,   
     # --- prep time series ---
     ts = df[["timestamp", "temperature_2m"]].dropna().copy()
     if ts.empty:
@@ -413,7 +412,7 @@ def spc_outliers_temperature(
     out_df = ts.loc[is_out].assign(SATV=satv_s.loc[is_out])
 
     # --- Map SPC limits back to temperature space ---
-    # x = baseline + SATV  → baseline = x - SATV
+
     baseline = x - satv
     baseline_s = pd.Series(baseline, index=ts.index, name="baseline_temp")
     upper_curve = baseline_s + upper
@@ -757,7 +756,7 @@ elif page.startswith("Plots"):
     st.title(f"Weather Plots (Open-Meteo 2021) — {area}")
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
+        st.info("Go to 'Electricity Production' to download weather for 2021 first.")
         st.stop()
 
     options = ["All columns"] + [c for c in wx.columns if c != "timestamp"]
@@ -785,7 +784,7 @@ elif page.startswith("Outliers & Anomalies"):
     st.title(f"new B – Outliers & Anomalies (Weather 2021) — {area}")
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
+        st.info("Go to 'Electricity Production' to download weather for 2021 first.")
         st.stop()
 
     tab1, tab2 = st.tabs(["Outlier / SPC (Temperature)", "Anomaly / LOF (Precipitation)"])
