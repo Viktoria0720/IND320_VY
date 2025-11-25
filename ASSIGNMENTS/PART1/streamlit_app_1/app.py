@@ -386,27 +386,39 @@ def spc_outliers_temperature(df: pd.DataFrame, dct_cutoff: float = 0.02, n_sigma
     upper = med + n_sigma*sigma; lower = med - n_sigma*sigma
     is_out = (satv_s > upper) | (satv_s < lower)
     out_df = ts.loc[is_out].assign(SATV=satv_s.loc[is_out])
+    # Plot temperature
     fig, ax = plt.subplots(figsize=(11, 3.6))
-    ax.plot(ts["timestamp"], ts["temperature_2m"], linewidth=1.0, label="Temperature")
-    ax.scatter(out_df["timestamp"], out_df["temperature_2m"], s=10, color='crimson', label="Outlier")
+    ax.plot(ts["timestamp"], ts["temperature_2m"], linewidth=1.0, color='tab:blue', label="Temperature")
     ax.set_title("Temperature & SPC Outliers (DCT high-pass)"); ax.set_ylabel("°C")
 
-    # Also plot the SATV (high-pass) series and show upper/lower bounds
+    # Compute SPC boundaries (robust) using SATV but do NOT plot SATV itself.
+    # upper/lower are med +/- n_sigma*sigma computed above.
     try:
-        satv_vals = satv_s.to_numpy(float)
-        ax.plot(ts["timestamp"], satv_vals, linewidth=0.8, color='tab:green', label='SATV (high-pass)')
-        ax.axhline(upper, color='crimson', linestyle='--', linewidth=0.8, label='SATV upper')
-        ax.axhline(lower, color='crimson', linestyle='--', linewidth=0.8, label='SATV lower')
+        n = len(ts)
+        upper_arr = np.full(n, upper)
+        lower_arr = np.full(n, lower)
+        times = ts["timestamp"].to_numpy()
 
-        # Compute combined y-limits to include temperature, SATV and bounds
+        # Plot boundary curves and lightly shade the inlier band
+        ax.plot(times, upper_arr, linestyle='--', color='orange', linewidth=0.9, label=f'SPC upper (±{n_sigma}σ)')
+        ax.plot(times, lower_arr, linestyle='--', color='orange', linewidth=0.9, label=f'SPC lower (±{n_sigma}σ)')
+        ax.fill_between(times, lower_arr, upper_arr, color='orange', alpha=0.08)
+
+        # Identify outlier points and plot them with a contrasting color
+        out_mask = (satv_s > upper) | (satv_s < lower)
+        out_points = ts.loc[out_mask]
+        if not out_points.empty:
+            ax.scatter(out_points["timestamp"], out_points["temperature_2m"], s=30, color='crimson', edgecolor='k', zorder=5, label='Outlier')
+
+        # Expand y-limits to include temperature and SPC bounds
         vals = ts["temperature_2m"].to_numpy(float)
-        combined = np.concatenate([np.asarray(vals).ravel(), np.asarray(satv_vals).ravel(), np.array([upper, lower])])
+        combined = np.concatenate([np.asarray(vals).ravel(), np.array([upper, lower])])
         y_min = float(np.nanmin(combined))
         y_max = float(np.nanmax(combined))
         margin = max(1e-3, (y_max - y_min) * 0.05)
         ax.set_ylim(y_min - margin, y_max + margin)
     except Exception:
-        # If computation fails, leave matplotlib defaults
+        # fallback: set limits based on temperature only
         try:
             vals = ts["temperature_2m"].to_numpy(float)
             y_min = float(np.nanmin(vals))
