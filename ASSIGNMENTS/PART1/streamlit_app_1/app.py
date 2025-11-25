@@ -355,52 +355,7 @@ def stl_decompose_production(
         raise ValueError(f"No production for area={area}, group={group}")
     y = pd.Series(df["production"].to_numpy(float), index=pd.to_datetime(df["time"]))
     res = STL(y, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
-
-    # Generate default STL plot and apply sensible axis boundaries
-    fig = res.plot()
-    fig.set_size_inches(11, 5)
-
-    # Try to extract components; fall back gracefully if missing
-    try:
-        trend_arr = np.asarray(res.trend)
-    except Exception:
-        trend_arr = None
-    try:
-        seasonal_arr = np.asarray(res.seasonal)
-    except Exception:
-        seasonal_arr = None
-    try:
-        resid_arr = np.asarray(res.resid)
-    except Exception:
-        resid_arr = None
-
-    # Observed + trend limits: combine observed series and trend (if present)
-    vals = [np.asarray(y).ravel()]
-    if trend_arr is not None and getattr(trend_arr, "size", 0) > 0:
-        vals.append(trend_arr.ravel())
-    all_vals = np.concatenate(vals) if vals else np.asarray(y)
-    y_min = np.nanmin(all_vals)
-    y_max = np.nanmax(all_vals)
-    margin = max(1e-8, (y_max - y_min) * 0.05)
-
-    # Apply axis limits by inspecting axis titles so we target Seasonal/Residual specifically
-    for ax in fig.axes:
-        title = (ax.get_title() or "").lower()
-        if "seasonal" in title:
-            if seasonal_arr is not None and getattr(seasonal_arr, "size", 0) > 0:
-                m = float(np.nanmax(np.abs(seasonal_arr))) * 1.1
-                ax.set_ylim(-m, m)
-        elif "resid" in title or "residual" in title:
-            if resid_arr is not None and getattr(resid_arr, "size", 0) > 0:
-                m = float(np.nanmax(np.abs(resid_arr))) * 1.1
-                ax.set_ylim(-m, m)
-        else:
-            # Observed / Trend plot
-            ax.set_ylim(y_min - margin, y_max + margin)
-
-    # Place suptitle and tighten layout leaving space for the title
-    fig.suptitle(f"STL – {area}/{group}")
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig = res.plot(); fig.set_size_inches(11, 5); fig.suptitle(f"STL – {area}/{group}"); fig.tight_layout()
     return fig, res
 
 def production_spectrogram(
@@ -435,6 +390,18 @@ def spc_outliers_temperature(df: pd.DataFrame, dct_cutoff: float = 0.02, n_sigma
     ax.plot(ts["timestamp"], ts["temperature_2m"], linewidth=1.0, label="Temperature")
     ax.scatter(out_df["timestamp"], out_df["temperature_2m"], s=10, color='crimson', label="Outlier")
     ax.set_title("Temperature & SPC Outliers (DCT high-pass)"); ax.set_ylabel("°C")
+
+    # Set y-axis boundaries based on observed data with a small margin
+    try:
+        vals = ts["temperature_2m"].to_numpy(float)
+        y_min = float(np.nanmin(vals))
+        y_max = float(np.nanmax(vals))
+        margin = max(1e-3, (y_max - y_min) * 0.05)
+        ax.set_ylim(y_min - margin, y_max + margin)
+    except Exception:
+        # If computation fails, leave matplotib defaults
+        pass
+
     ax.legend(); fig.tight_layout()
     return fig, out_df, pd.DataFrame([{
         "n": int(len(ts)), "n_outliers": int(is_out.sum()),
@@ -454,6 +421,17 @@ def lof_precip_anomalies(df: pd.DataFrame, contamination: float = 0.01, n_neighb
     ax.plot(sub["timestamp"], sub["precipitation"], linewidth=1.0, label="Precipitation")
     ax.scatter(anoms["timestamp"], anoms["precipitation"], s=10, color='orange', label="LOF anomaly")
     ax.set_title("Precipitation & LOF anomalies"); ax.set_ylabel("mm")
+
+    # Set y-axis boundaries based on observed precipitation with a small margin
+    try:
+        vals = sub["precipitation"].to_numpy(float)
+        y_min = float(np.nanmin(vals))
+        y_max = float(np.nanmax(vals))
+        margin = max(1e-6, (y_max - y_min) * 0.05)
+        ax.set_ylim(y_min - margin, y_max + margin)
+    except Exception:
+        pass
+
     ax.legend(); fig.tight_layout()
     return fig, anoms, pd.DataFrame([{
         "n": int(len(sub)), "n_anomalies": int(len(anoms)),
