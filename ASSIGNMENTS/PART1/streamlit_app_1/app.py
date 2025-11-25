@@ -381,6 +381,7 @@ def spc_outliers_temperature(
     dct_cutoff: float = 0.02,
     n_sigma: float = 3.5,
     spc_stats: dict | None = None,   
+):
     # --- prep time series ---
     ts = df[["timestamp", "temperature_2m"]].dropna().copy()
     if ts.empty:
