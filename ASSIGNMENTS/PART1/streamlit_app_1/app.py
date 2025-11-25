@@ -375,66 +375,90 @@ def production_spectrogram(
     ax.set_title(f"Spectrogram – {area}/{group}"); ax.set_xlabel("Window index"); ax.set_ylabel("Frequency [cycles/hour]")
     fig.colorbar(im, ax=ax, label="Power [dB]"); fig.tight_layout(); return fig
 
-def spc_outliers_temperature(df: pd.DataFrame, dct_cutoff: float = 0.02, n_sigma: float = 3.5):
+def spc_outliers_temperature(
+    df: pd.DataFrame,
+    dct_cutoff: float = 0.02,
+    n_sigma: float = 3.5,
+    spc_stats: dict | None = None,   # <— NEW: reuse whole-year stats if provided
+):
     ts = df[["timestamp", "temperature_2m"]].dropna().copy()
     x = ts["temperature_2m"].to_numpy(float)
-    X = dct(x, type=2, norm="ortho"); k = max(1, int(len(X) * dct_cutoff))
-    X_hp = X.copy(); X_hp[:k] = 0.0
-    satv = idct(X_hp, type=2, norm="ortho"); satv_s = pd.Series(satv, index=ts.index, name="SATV")
-    med = float(np.median(satv)); mad = float(np.median(np.abs(satv - med)))
-    sigma = 1.4826*mad if mad > 0 else float(np.std(satv))
-    upper = med + n_sigma*sigma; lower = med - n_sigma*sigma
+
+    # --- SATV via DCT high-pass ---
+    X = dct(x, type=2, norm="ortho")
+    k = max(1, int(len(X) * dct_cutoff))
+    X_hp = X.copy()
+    X_hp[:k] = 0.0
+    satv = idct(X_hp, type=2, norm="ortho")
+    satv_s = pd.Series(satv, index=ts.index, name="SATV")
+
+    # --- Robust SPC stats ---
+    if spc_stats is None:
+        # compute from THIS df (e.g. whole year once)
+        med = float(np.median(satv))
+        mad = float(np.median(np.abs(satv - med)))
+        sigma = 1.4826 * mad if mad > 0 else float(np.std(satv))
+        upper = med + n_sigma * sigma
+        lower = med - n_sigma * sigma
+    else:
+        # reuse global stats (e.g. computed from whole year)
+        med = float(spc_stats["median_SATV"])
+        sigma = float(spc_stats["sigma_robust"])
+        upper = float(spc_stats["upper_bound"])
+        lower = float(spc_stats["lower_bound"])
+
     is_out = (satv_s > upper) | (satv_s < lower)
     out_df = ts.loc[is_out].assign(SATV=satv_s.loc[is_out])
-    # Plot temperature
+
+    # --- Plot temperature + horizontal SPC band ---
     fig, ax = plt.subplots(figsize=(11, 3.6))
-    ax.plot(ts["timestamp"], ts["temperature_2m"], linewidth=1.0, color='tab:blue', label="Temperature")
-    ax.set_title("Temperature & SPC Outliers (DCT high-pass)"); ax.set_ylabel("°C")
+    ax.plot(ts["timestamp"], ts["temperature_2m"],
+            linewidth=1.0, color="tab:blue", label="Temperature")
 
-    # Compute SPC boundaries (robust) using SATV but do NOT plot SATV itself.
-    # upper/lower are med +/- n_sigma*sigma computed above.
-    try:
-        n = len(ts)
-        upper_arr = np.full(n, upper)
-        lower_arr = np.full(n, lower)
-        times = ts["timestamp"].to_numpy()
+    n = len(ts)
+    times = ts["timestamp"].to_numpy()
+    upper_arr = np.full(n, upper)
+    lower_arr = np.full(n, lower)
 
-        # Plot boundary curves and lightly shade the inlier band
-        ax.plot(times, upper_arr, linestyle='--', color='orange', linewidth=0.9, label=f'SPC upper (±{n_sigma}σ)')
-        ax.plot(times, lower_arr, linestyle='--', color='orange', linewidth=0.9, label=f'SPC lower (±{n_sigma}σ)')
-        ax.fill_between(times, lower_arr, upper_arr, color='orange', alpha=0.08)
+    ax.plot(times, upper_arr, linestyle="--", color="orange", linewidth=0.9,
+            label=f"SPC upper (±{n_sigma}σ)")
+    ax.plot(times, lower_arr, linestyle="--", color="orange", linewidth=0.9,
+            label=f"SPC lower (±{n_sigma}σ)")
+    ax.fill_between(times, lower_arr, upper_arr, color="orange", alpha=0.08)
 
-        # Identify outlier points and plot them with a contrasting color
-        out_mask = (satv_s > upper) | (satv_s < lower)
-        out_points = ts.loc[out_mask]
-        if not out_points.empty:
-            ax.scatter(out_points["timestamp"], out_points["temperature_2m"], s=30, color='crimson', edgecolor='k', zorder=5, label='Outlier')
+    # Outliers in contrasting colour
+    out_points = ts.loc[is_out]
+    if not out_points.empty:
+        ax.scatter(out_points["timestamp"], out_points["temperature_2m"],
+                   s=30, color="crimson", edgecolor="k", zorder=5,
+                   label="Outlier")
 
-        # Expand y-limits to include temperature and SPC bounds
-        vals = ts["temperature_2m"].to_numpy(float)
-        combined = np.concatenate([np.asarray(vals).ravel(), np.array([upper, lower])])
-        y_min = float(np.nanmin(combined))
-        y_max = float(np.nanmax(combined))
-        margin = max(1e-3, (y_max - y_min) * 0.05)
-        ax.set_ylim(y_min - margin, y_max + margin)
-    except Exception:
-        # fallback: set limits based on temperature only
-        try:
-            vals = ts["temperature_2m"].to_numpy(float)
-            y_min = float(np.nanmin(vals))
-            y_max = float(np.nanmax(vals))
-            margin = max(1e-3, (y_max - y_min) * 0.05)
-            ax.set_ylim(y_min - margin, y_max + margin)
-        except Exception:
-            pass
+    # nice y-limits
+    vals = ts["temperature_2m"].to_numpy(float)
+    combined = np.concatenate([vals.ravel(), np.array([upper, lower])])
+    y_min = float(np.nanmin(combined))
+    y_max = float(np.nanmax(combined))
+    margin = max(1e-3, (y_max - y_min) * 0.05)
+    ax.set_ylim(y_min - margin, y_max + margin)
 
-    ax.legend(); fig.tight_layout()
-    return fig, out_df, pd.DataFrame([{
-        "n": int(len(ts)), "n_outliers": int(is_out.sum()),
-        "pct_outliers": float(is_out.mean()*100.0),
-        "dct_cutoff": float(dct_cutoff), "n_sigma": float(n_sigma),
-        "median_SATV": med, "sigma_robust": sigma, "upper_bound": upper, "lower_bound": lower,
+    ax.set_title("Temperature & SPC Outliers (DCT high-pass)")
+    ax.set_ylabel("°C")
+    ax.legend()
+    fig.tight_layout()
+
+    summary = pd.DataFrame([{
+        "n": int(len(ts)),
+        "n_outliers": int(is_out.sum()),
+        "pct_outliers": float(is_out.mean() * 100.0),
+        "dct_cutoff": float(dct_cutoff),
+        "n_sigma": float(n_sigma),
+        "median_SATV": med,
+        "sigma_robust": sigma,
+        "upper_bound": upper,
+        "lower_bound": lower,
     }])
+
+    return fig, out_df, summary
 
 def lof_precip_anomalies(df: pd.DataFrame, contamination: float = 0.01, n_neighbors: int = 35):
     sub = df[["timestamp", "precipitation"]].dropna().copy()
@@ -676,7 +700,7 @@ elif page.startswith("Data Table"):
     st.title(f"Weather Data Table (Open-Meteo 2021) — {area}")
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
+        st.info("Go to Electricity Production to download weather for 2021 first.")
         st.stop()
 
     st.write("First month of the dataset, row-wise sparklines per variable:")
