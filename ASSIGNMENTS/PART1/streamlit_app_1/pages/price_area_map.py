@@ -11,7 +11,7 @@ from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme
 from core.geo_helpers import get_production_groups, mean_production_by_area, _area_to_feature_code
 
-GEOJSON_PATH = "data/file.geojson"  
+GEOJSON_PATH = "ASSIGNMENT/PART1/streamlit_app_1/data/file.geojson"  
 GEOJSON_AREA_PROP = "ElSpotOmr"      
 
 
