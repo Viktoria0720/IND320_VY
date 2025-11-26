@@ -13,7 +13,7 @@ SECTIONS = {
 SECTION_COLORS = {
     "Overview": "#2b6777",
     "Elhub – Production": "#ae7be9",   
-    "Open-Meteo – Weather": "#d5e44f",
+    "Open-Meteo – Weather": "#7fdee9",
     "Maps": "#5f9462",
     "Meta": "#9c27b0",
 }
@@ -30,8 +30,8 @@ SECTION_THEMES = {
         "sidebar_bg": "#710392",
     },
     "Open-Meteo – Weather": {
-        "bg": "linear-gradient(135deg, #FAEDD2 0%, #ffffff 60%)",
-        "sidebar_bg": "#CAAE10",
+        "bg": "linear-gradient(135deg, #7fdee9 0%, #ffffff 60%)",
+        "sidebar_bg": "#5E88A5",
     },
     "Maps": {
         "bg": "linear-gradient(135deg, #e8f5e9 0%, #ffffff 60%)",
