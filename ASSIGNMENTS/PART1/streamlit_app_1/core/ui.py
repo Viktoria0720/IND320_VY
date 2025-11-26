@@ -3,7 +3,7 @@ import streamlit as st
 
 SECTIONS = {
     "Overview": ["Home"],
-    "Elhub – Production": ["Production Dashboard", "Production Time Series"],
+    "Elhub – Production": ["Production Dashboard", "Production Time Series","Energy Forecast (SARIMAX)",],
     "Maps": ["Price Area Map"], 
     "Open-Meteo – Weather": ["Weather Overview", "Weather Anomalies","Snow Drift","Met–Energy Correlation"],
     "Meta": ["About"],
@@ -13,7 +13,7 @@ SECTIONS = {
 SECTION_COLORS = {
     "Overview": "#2b6777",
     "Elhub – Production": "#ae7be9",   
-    "Open-Meteo – Weather": "#7fdee9",
+    "Open-Meteo – Weather": "#93cbd1",
     "Maps": "#5f9462",
     "Meta": "#9c27b0",
 }
@@ -30,7 +30,7 @@ SECTION_THEMES = {
         "sidebar_bg": "#710392",
     },
     "Open-Meteo – Weather": {
-        "bg": "linear-gradient(135deg, #7fdee9 0%, #ffffff 60%)",
+        "bg": "linear-gradient(135deg, #93cbd1 0%, #ffffff 60%)",
         "sidebar_bg": "#5E88A5",
     },
     "Maps": {

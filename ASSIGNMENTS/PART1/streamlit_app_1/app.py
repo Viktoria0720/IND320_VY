@@ -11,7 +11,8 @@ from pages import (
     weather_anomalies,
     snow_drift_page, 
     met_energy_corr,
-    price_area_map, 
+    price_area_map,
+    energy_forecast, 
     meta_about,
 )
 
@@ -48,6 +49,9 @@ elif section == "Elhub – Production" and page == "Production Dashboard":
 
 elif section == "Elhub – Production" and page == "Production Time Series":
     elhub_timeseries.render(section)
+
+elif section == "Elhub – Production" and page == "Energy Forecast (SARIMAX)":
+    energy_forecast.render(section)
 
 elif section == "Open-Meteo – Weather" and page == "Weather Overview":
     weather_overview.render(section)
