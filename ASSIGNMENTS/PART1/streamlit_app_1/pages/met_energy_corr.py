@@ -11,7 +11,6 @@ from core.geo_helpers import get_energy_groups
 from core.mongo_elhub import load_elhub_for_area
 
 
-
 def _compute_sliding_correlation(
     df: pd.DataFrame,
     met_col: str,
@@ -64,7 +63,6 @@ def render(section: str):
         )
         return
 
-    # Ensure timestamp column is called 'timestamp' and is datetime
     if "timestamp" not in wx.columns:
         st.error("Weather dataframe is missing 'timestamp' column.")
         return
@@ -73,7 +71,7 @@ def render(section: str):
     wx["timestamp"] = pd.to_datetime(wx["timestamp"])
     wx = wx.sort_values("timestamp")
 
-    # --- 2. Area selection (consistent with rest of app) --------------------
+    # --- 2. Area selection ---------------------------------------------------
     area_codes = AREAS_DF["area"].tolist()
     default_area = st.session_state.get("area", "NO5")
     if default_area not in area_codes:
@@ -85,7 +83,7 @@ def render(section: str):
     st.session_state.area = sel_area
     area = sel_area
 
-    # Restrict to 2021 for now (since wx2021 == 2021)
+    # For now we use 2021 because wx2021 is 2021
     year = 2021
     start_ts = pd.Timestamp(year=year, month=1, day=1)
     end_ts = pd.Timestamp(year=year + 1, month=1, day=1)
@@ -95,7 +93,6 @@ def render(section: str):
     # --- 3. Selectors: met variable, energy type, energy group --------------
     st.subheader("Variables & parameters")
 
-    # Meteorological variable options: numeric wx columns (except timestamp)
     met_candidates = [
         c for c in wx.columns
         if c != "timestamp" and pd.api.types.is_numeric_dtype(wx[c])
@@ -148,56 +145,55 @@ def render(section: str):
             ),
         )
 
-        if st.button("Compute sliding correlation", type="primary"):
-        # --- 4. Load energy series from Elhub --------------------------------
-            with st.spinner("Loading Elhub energy series from Mongo …"):
-                if data_type == "Production":
-                    # Use the same loader as the other production pages
-                    prod_df = load_elhub_for_area(area, year)
-                    if prod_df.empty:
-                        st.warning(
-                            f"No production data found for area {area} in {year}. "
-                            "Try another area or year."
-                        )
-                        return
-
-                    df_group = prod_df[prod_df["group"] == energy_group].copy()
-                    if df_group.empty:
-                        st.warning(
-                            f"No production data found for area {area}, "
-                            f"group '{energy_group}' in {year}."
-                        )
-                        return
-
-                    energy_df = (
-                        df_group[["time", "production"]]
-                        .rename(columns={"production": "kwh"})
-                        .sort_values("time")
+    # --- 4. Button – everything below is inside this block -------------------
+    if st.button("Compute sliding correlation", type="primary"):
+        # 4a. Load energy series from Mongo
+        with st.spinner("Loading Elhub energy series from Mongo …"):
+            if data_type == "Production":
+                # Use the same loader as other production pages
+                prod_df = load_elhub_for_area(area, year)
+                if prod_df.empty:
+                    st.warning(
+                        f"No production data found for area {area} in {year}. "
+                        "Try another area."
                     )
+                    return
 
-                else:
-                    # Consumption: still use the dedicated helper
-                    energy_df = load_area_energy_series(
-                        energy_type=data_type,
-                        area=area,
-                        group=energy_group,
-                        start_ts=start_ts,
-                        end_ts=end_ts,
+                df_group = prod_df[prod_df["group"] == energy_group].copy()
+                if df_group.empty:
+                    st.warning(
+                        f"No production data found for area {area}, "
+                        f"group '{energy_group}' in {year}."
                     )
+                    return
 
-            if energy_df is None or energy_df.empty:
-                st.warning(
-                    f"No {data_type.lower()} data found for area {area}, "
-                    f"group '{energy_group}' in {year}."
+                energy_df = (
+                    df_group[["time", "production"]]
+                    .rename(columns={"production": "kwh"})
+                    .sort_values("time")
                 )
-                return
 
+            else:
+                # Consumption via dedicated helper
+                energy_df = load_area_energy_series(
+                    energy_type=data_type,
+                    area=area,
+                    group=energy_group,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                )
 
-        # --- 5. Align weather and energy on a common hourly time index -------
+        if energy_df is None or energy_df.empty:
+            st.warning(
+                f"No {data_type.lower()} data found for area {area}, "
+                f"group '{energy_group}' in {year}."
+            )
+            return
+
+        # 4b. Align weather and energy on a common hourly time index
         wx_sub = wx[(wx["timestamp"] >= start_ts) & (wx["timestamp"] < end_ts)].copy()
         wx_sub = wx_sub[["timestamp", met_var]].rename(columns={"timestamp": "time"})
 
-        # energy_df expected columns: ['time', 'kwh']
         energy_sub = energy_df.copy()
         energy_sub["time"] = pd.to_datetime(energy_sub["time"])
 
@@ -215,7 +211,7 @@ def render(section: str):
         merged = merged.sort_values("time")
         merged.rename(columns={"kwh": "energy_kwh"}, inplace=True)
 
-        # --- 6. Compute sliding correlation ----------------------------------
+        # 4c. Compute sliding correlation
         corr_df = _compute_sliding_correlation(
             merged,
             met_col=met_var,
@@ -224,15 +220,15 @@ def render(section: str):
             lag_hours=int(lag_hours),
         )
 
-        # --- 7. Show base series preview ------------------------------------
+        # 4d. Show base series preview
         st.markdown("### Data preview")
         st.write(
             f"Area **{area}**, {data_type.lower()} group **{energy_group}**, "
             f"met variable **{met_var}**."
         )
-        st.dataframe(merged.head(100), use_container_width=True)
+        st.dataframe(merged.head(100), width="stretch")
 
-        # --- 8. Plot sliding correlation (Plotly) ----------------------------
+        # 4e. Plot sliding correlation (Plotly)
         st.markdown("### Sliding-window correlation")
 
         if corr_df.empty:
@@ -253,9 +249,9 @@ def render(section: str):
             )
             fig_corr.add_hline(y=0.0)
             fig_corr = style_plotly(fig_corr, section)
-            st.plotly_chart(fig_corr, use_container_width=True)
+            st.plotly_chart(fig_corr, width="stretch")
 
-        # --- 9. Scatter plot for the chosen period ---------------------------
+        # 4f. Scatter plot for the chosen period
         st.markdown("### Scatter plot (overall period)")
 
         fig_sc = px.scatter(
@@ -268,7 +264,7 @@ def render(section: str):
             title=f"{met_var} vs {data_type.lower()} ({energy_group}) – overall",
         )
         fig_sc = style_plotly(fig_sc, section)
-        st.plotly_chart(fig_sc, use_container_width=True)
+        st.plotly_chart(fig_sc, width="stretch")
 
         st.caption(
             "Correlation is computed using a sliding window over hourly data. "
