@@ -3,6 +3,22 @@ import streamlit as st
 from core.constants import AREAS_DF
 from core.ui import section_badge
 
+
+# pages/overview.py
+import streamlit as st
+from core.ui import section_badge, apply_section_theme
+
+def render(section: str):
+    # DEBUG TEST
+    st.write("🔴 DEBUG: overview.render() START, section =", section)
+
+    apply_section_theme(section)
+    section_badge("Overview", section)
+    st.title("Welcome to the IND320 App 🌦️⚡")
+    st.write("This is the Home page.")
+
+#%%
+"""
 def render(section: str):
     apply_section_theme(section)
     section_badge("Overview", section)
@@ -17,3 +33,6 @@ def render(section: str):
         "This app provides insights into electricity production and consumption across different price areas. "
         "Explore the various dashboards to analyze trends and patterns."
     )
+
+"""
+#%%
