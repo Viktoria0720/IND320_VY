@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
-import plotly.express as px  
+import plotly.express as px
 
 from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
@@ -30,6 +30,7 @@ def load_geojson():
     except FileNotFoundError:
         st.error(f"GeoJSON file not found at {GEOJSON_PATH}")
         raise
+
 
 def _area_to_feature_code(area_code: str) -> str:
     """
@@ -61,7 +62,11 @@ def render(section: str):
     if default_area not in area_codes:
         default_area = area_codes[0]
 
-    st.session_state.area = st.selectbox("Chosen price area", area_codes, index=area_codes.index(default_area))
+    st.session_state.area = st.selectbox(
+        "Chosen price area",
+        area_codes,
+        index=area_codes.index(default_area),
+    )
     chosen_area = st.session_state.area
 
     st.markdown("---")
@@ -71,6 +76,7 @@ def render(section: str):
 
     col1, col2, col3 = st.columns([1.2, 1.2, 2])
 
+    # Production vs Consumption
     with col1:
         data_type = st.radio(
             "Data type",
@@ -78,34 +84,35 @@ def render(section: str):
             help="Consumption requires that you have loaded your consumption data into Mongo / Cassandra.",
         )
 
+    # Year for convenient default date
     with col2:
         year = st.selectbox("Year", [2021, 2022, 2023, 2024], index=0)
 
+    # Group depends on Production/Consumption
     with col3:
         energy_groups = get_energy_groups(data_type)
         selected_group = st.selectbox("Energy group", energy_groups)
 
-
+    # Time interval (in days)
     c4, c5 = st.columns(2)
     with c4:
         start_date = st.date_input("Start date", date(year, 1, 1))
     with c5:
         days = st.slider("Interval length (days)", 1, 31, 7)
 
-    # Build timestamps
+    # Build timestamps (naive Oslo time, handled in helpers)
     start_ts = pd.to_datetime(start_date)
     end_ts = start_ts + timedelta(days=int(days))
 
     st.caption(f"Interval: {start_ts.date()} → {end_ts.date()} (not inclusive)")
 
-    # 5) Compute mean values per area for the selected data type
+    # 5) Compute mean values per area for the selected data type + group + interval
     mean_df = mean_energy_by_area(
         data_type=data_type,   # "Production" or "Consumption"
         group=selected_group,
         start=start_ts,
         end=end_ts,
     )
-
 
     # Map internal 'NO1' → GeoJSON 'NO 1'
     mean_df = mean_df.copy()
@@ -128,16 +135,15 @@ def render(section: str):
             geo_data=geojson_data,
             name="mean_values",
             data=mean_df,
-            columns=["geo_code", "mean_value"],   # 👈 use geo_code
-            key_on=f"feature.properties.{GEOJSON_AREA_PROP}",  # ElSpotOmr
+            columns=["geo_code", "mean_value"],   # use geo_code
+            key_on=f"feature.properties.{GEOJSON_AREA_PROP}",  # "ElSpotOmr"
             fill_color="YlOrRd",
-            fill_opacity=0.6,
+            fill_opacity=0.6,   # transparent-ish
             line_opacity=0.2,
             highlight=True,
             legend_name=f"Mean {data_type.lower()} ({selected_group})",
         )
         choropleth.add_to(m)
-
 
     # 8) Add outline layer with highlight for chosen area
     def style_function(feature):
@@ -157,7 +163,6 @@ def render(section: str):
                 "weight": 1,
             }
 
-    
     folium.GeoJson(
         geojson_data,
         name="outlines",
@@ -182,11 +187,10 @@ def render(section: str):
     map_data = st_folium(m, height=600, width="stretch")
 
     # --- Energy stats for the selected area and time period ---
-
     st.subheader("Energy in selected area")
 
     energy_df = load_area_energy_series(
-        energy_type=data_type,         # "Production" / "Consumption" radio
+        energy_type=data_type,         # "Production" / "Consumption"
         area=chosen_area,              # from your area selectbox
         group=selected_group,          # from "Energy group" selectbox
         start_ts=start_ts,
@@ -218,7 +222,6 @@ def render(section: str):
         )
         fig = style_plotly(fig, section)
         st.plotly_chart(fig, width="stretch")
-
 
     # 11) Store clicked coordinate in session and show it
     last_clicked = map_data.get("last_clicked") if map_data else None
