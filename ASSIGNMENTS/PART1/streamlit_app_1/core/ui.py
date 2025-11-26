@@ -33,3 +33,54 @@ def section_badge(label: str, section: str):
         """,
         unsafe_allow_html=True,
     )
+def apply_section_theme(section: str):
+    # Pick colors per group
+    if section == "Elhub – Production":
+        primary = "#0B7285"
+        bg = "#E3FAFC"
+        sidebar_bg = "#0B7285"
+    elif section == "Weather – Overview":
+        primary = "#7048E8"
+        bg = "#F3F0FF"
+        sidebar_bg = "#7048E8"
+    else:  # Meta / default
+        primary = "#2B8A3E"
+        bg = "#EBFBEE"
+        sidebar_bg = "#2B8A3E"
+
+    st.markdown(
+        f"""
+        <style>
+        /* App background */
+        .stApp {{
+            background-color: {bg};
+        }}
+
+        /* Sidebar background */
+        section[data-testid="stSidebar"] > div {{
+            background-color: {sidebar_bg};
+        }}
+
+        /* Sidebar text color */
+        section[data-testid="stSidebar"] * {{
+            color: white;
+        }}
+
+        /* Primary buttons */
+        .stButton > button {{
+            background-color: {primary};
+            border-color: {primary};
+            color: white;
+        }}
+
+        /* Radio / select highlight */
+        div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child,
+        div[data-baseweb="select"] > div {{
+            border-color: {primary};
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+apply_section_theme(section)
