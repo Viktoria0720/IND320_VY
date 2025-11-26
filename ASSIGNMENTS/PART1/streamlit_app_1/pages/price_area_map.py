@@ -11,15 +11,26 @@ from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme
 from core.geo_helpers import get_production_groups, mean_production_by_area, _area_to_feature_code
 
-GEOJSON_PATH = "file.geojson"  
-GEOJSON_AREA_PROP = "ElSpotOmr"      
+# Folder of THIS file (pages/price_area_map.py)
+HERE = Path(__file__).resolve().parent
+
+# If file.geojson lives next to app.py one level up from pages/
+GEOJSON_PATH = HERE.parent / "file.geojson"
+GEOJSON_AREA_PROP = "ElSpotOmr"
+st.write("GeoJSON_PATH (resolved):", GEOJSON_PATH)
+     
 
 
 
 @st.cache_data(show_spinner=False)
 def load_geojson():
-    with open(GEOJSON_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(GEOJSON_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        st.error(f"GeoJSON file not found at {GEOJSON_PATH}")
+        raise
+
 
 
 
