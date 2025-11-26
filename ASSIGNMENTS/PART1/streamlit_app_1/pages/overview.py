@@ -8,10 +8,10 @@ def render(section: str):
     section_badge("Overview", section)
     st.title("Welcome to the IND320 App 🌦️⚡")
     st.write("DEBUG: current section is", section)
-    st.write(
-        "Use the navigation on the left. "
-        "Start with **Elhub – Production → Production Dashboard** to choose a price area."
-    )
+    #st.write(
+       #"Use the navigation on the left. "
+        #"Start with **Elhub – Production → Production Dashboard** to choose a price area."
+   # )
     st.dataframe(AREAS_DF[["area", "city", "lon", "lat"]], use_container_width=True)
     st.write(
         "This app provides insights into electricity production and consumption across different price areas. "
