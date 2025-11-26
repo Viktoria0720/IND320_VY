@@ -1,18 +1,36 @@
+"""
+Created on Wed Sep  24 10:58:08 2023
+
+@author: viyav
+"""
 # app.py
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 import streamlit as st
+import requests
 
-from core.constants import AREAS_DF
-from core.ui import SECTIONS
-from pages import (
-    overview,
-    elhub_production,
-    elhub_timeseries,
-    weather_overview,
-    weather_anomalies,
-    meta_about,
-)
+from typing import Iterable, Optional
+from scipy.fft import dct, idct
+from sklearn.neighbors import LocalOutlierFactor
+from statsmodels.tsa.seasonal import STL
+from scipy.signal import spectrogram
 
-# Page config
+# Optional viz engines (graceful fallback)
+try:
+    import altair as alt
+    USE_ALTAIR = True
+except Exception:
+    alt = None
+    USE_ALTAIR = False
+
+try:
+    import plotly.express as px
+except Exception:
+    px = None
+
+# ---------- Streamlit page setup ----------
 st.set_page_config(page_title="IND320 • Open-Meteo + Elhub", layout="wide")
 st.markdown(
     """
@@ -23,13 +41,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Session defaults
+# -------------------------------------------------------
+# GLOBAL STATE (shared across pages)
+# -------------------------------------------------------
 if "area" not in st.session_state:
-    st.session_state.area = "NO5"
+    st.session_state.area = "NO5"   # default once
 if "wx2021" not in st.session_state:
     st.session_state.wx2021 = None
 
-<<<<<<< HEAD
 # -------------------------------------------------------
 # SHARED CONSTANTS
 # -------------------------------------------------------
@@ -361,7 +380,7 @@ def spc_outliers_temperature(
     df: pd.DataFrame,
     dct_cutoff: float = 0.02,
     n_sigma: float = 3.5,
-    spc_stats: dict | None = None,   
+    spc_stats: dict | None = None,   # optional: reuse precomputed whole-year stats
 ):
     # --- prep time series ---
     ts = df[["timestamp", "temperature_2m"]].dropna().copy()
@@ -394,7 +413,7 @@ def spc_outliers_temperature(
     out_df = ts.loc[is_out].assign(SATV=satv_s.loc[is_out])
 
     # --- Map SPC limits back to temperature space ---
-
+    # x = baseline + SATV  → baseline = x - SATV
     baseline = x - satv
     baseline_s = pd.Series(baseline, index=ts.index, name="baseline_temp")
     upper_curve = baseline_s + upper
@@ -507,7 +526,7 @@ page = st.sidebar.radio("Go to", PAGES, index=0)
 # PAGE 1: HOME
 if page.startswith("Home"):
     st.title("Welcome to the IND320 App 🌦️⚡")
-    st.write("Select an area on **Electricity Production**. That selection drives the weather download and the Mongo views.")
+    st.write("Select an area on **Page 4**. That selection drives the weather download and the Mongo views.")
     st.dataframe(AREAS_DF[["area","city","lon","lat"]], use_container_width=True)
 
 # PAGE 4: AREA SELECTOR (drives weather + shows Mongo pie & trend)
@@ -688,42 +707,62 @@ elif page.startswith("STL & Spectrogram"):
     with st.expander("Data info"):
         st.write(f"Area: **{area}**  •  Year: **{year}**  •  Rows: **{len(prod_df):,}**")
         st.dataframe(prod_df.head(), use_container_width=True)
-=======
-# Sidebar navigation
-st.sidebar.title("Navigation")
-section = st.sidebar.selectbox("Section", list(SECTIONS.keys()), index=0)
-page = st.sidebar.radio("Page", SECTIONS[section], index=0)
->>>>>>> origin/assignments_trial
 
 
-# Route to page modules
-if section == "Overview" and page == "Home":
-    overview.render(section)
+# PAGE 2: DATA TABLE (Open-Meteo 2021)
+elif page.startswith("Data Table"):
+    area = st.session_state.area
+    st.title(f"Weather Data Table (Open-Meteo 2021) — {area}")
+    wx = st.session_state.get("wx2021")
+    if wx is None or wx.empty:
+        st.info("Go to Electricity Production to download weather for 2021 first.")
+        st.stop()
 
-elif section == "Elhub – Production" and page == "Production Dashboard":
-    elhub_production.render(section)
+    st.write("First month of the dataset, row-wise sparklines per variable:")
+    first_month = wx["timestamp"].dt.to_period("M").min()
+    df_first_month = wx[wx["timestamp"].dt.to_period("M") == first_month].copy()
+    data_only = df_first_month.drop(columns=["timestamp"])
+    reshaped = pd.DataFrame({
+        "Variable": data_only.columns,
+        "Trend": [data_only[c].tolist() for c in data_only.columns],
+    })
+    st.dataframe(
+        reshaped,
+        column_config={
+            "Variable": st.column_config.TextColumn("Variable"),
+            "Trend": st.column_config.LineChartColumn(
+                "First Month Series",
+                y_min=float(np.nanmin(data_only.values)),
+                y_max=float(np.nanmax(data_only.values)),
+                width="large",
+            ),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
 
-elif section == "Elhub – Production" and page == "Production Time Series":
-    elhub_timeseries.render(section)
+    st.divider()
+    st.write("Alternate rendering (mini line charts per row):")
+    col1, col2 = st.columns([1, 3])
+    col1.write("**Variable**")
+    col2.write("**First Month Trend**")
+    for col_name in data_only.columns:
+        c1, c2 = st.columns([1, 3])
+        c1.write(col_name)
+        c2.line_chart(df_first_month.set_index("timestamp")[[col_name]], height=160)
 
-<<<<<<< HEAD
 # PAGE 3: PLOTS (weather)
 elif page.startswith("Plots"):
     area = st.session_state.area
     st.title(f"Weather Plots (Open-Meteo 2021) — {area}")
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to 'Electricity Production' to download weather for 2021 first.")
+        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
         st.stop()
-=======
-elif section == "Open-Meteo – Weather" and page == "Weather Overview":
-    weather_overview.render(section)
->>>>>>> origin/assignments_trial
 
-elif section == "Open-Meteo – Weather" and page == "Weather Anomalies":
-    weather_anomalies.render(section)
+    options = ["All columns"] + [c for c in wx.columns if c != "timestamp"]
+    column_choice = st.selectbox("Select column(s) to plot", options)
 
-<<<<<<< HEAD
     months = sorted(wx["timestamp"].dt.to_period("M").unique())
     month_selected = st.select_slider("Select a month", options=months, value=months[0])
     month_df = wx[wx["timestamp"].dt.to_period("M") == month_selected]
@@ -746,7 +785,7 @@ elif page.startswith("Outliers & Anomalies"):
     st.title(f"new B – Outliers & Anomalies (Weather 2021) — {area}")
     wx = st.session_state.get("wx2021")
     if wx is None or wx.empty:
-        st.info("Go to 'Electricity Production' to download weather for 2021 first.")
+        st.info("Go to '4 – Area selector' to download weather for 2021 first.")
         st.stop()
 
     tab1, tab2 = st.tabs(["Outlier / SPC (Temperature)", "Anomaly / LOF (Precipitation)"])
@@ -778,7 +817,3 @@ elif page.startswith("To be continued"):
         "text-align:center; padding:50px;'>You're almost there! 🚀</div>",
         unsafe_allow_html=True,
     )
-=======
-elif section == "Meta" and page == "About":
-    meta_about.render(section)
->>>>>>> origin/assignments_trial
