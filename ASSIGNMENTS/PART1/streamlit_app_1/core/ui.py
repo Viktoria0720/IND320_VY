@@ -23,8 +23,8 @@ SECTION_THEMES = {
         "sidebar_bg": "#146783",
     },
     "Elhub – Production": {
-        # MUCH more visible yellow/orange theme
-        "bg": "linear-gradient(135deg, #f2d9fa 0%, #ffe082 60%)",
+        
+        "bg": "linear-gradient(135deg, #f2d9fa 0%, #ffffff 60%)",
         "sidebar_bg": "#9122db",
     },
     "Open-Meteo – Weather": {
