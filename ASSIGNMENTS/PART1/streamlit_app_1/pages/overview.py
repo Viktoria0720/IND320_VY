@@ -20,3 +20,5 @@ def render(section: str):
     )
 
     st.dataframe(AREAS_DF[["area", "city", "lon", "lat"]], use_container_width=True)
+import streamlit as st
+st.write("Streamlit version:", st.__version__)
