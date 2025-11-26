@@ -7,6 +7,7 @@ def render(section: str):
     apply_section_theme(section)
     section_badge("Overview", section)
     st.title("Welcome to the IND320 App 🌦️⚡")
+    st.write("DEBUG: current section is", section)
     st.write(
         "Use the navigation on the left. "
         "Start with **Elhub – Production → Production Dashboard** to choose a price area."
