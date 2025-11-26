@@ -34,21 +34,7 @@ st.sidebar.title("Navigation")
 section = st.sidebar.selectbox("Section", list(SECTIONS.keys()), index=0)
 page = st.sidebar.radio("Page", SECTIONS[section], index=0)
 
-# app.py (after you define section & page in the sidebar)
 
-st.sidebar.write(f"🟢 DEBUG router: section={section}, page={page}")
-
-if section == "Overview" and page == "Home":
-    st.sidebar.write("🟢 DEBUG router: calling overview.render")
-    overview.render(section)
-
-elif section == "Elhub – Production" and page == "Production Dashboard":
-    st.sidebar.write("🟢 DEBUG router: calling elhub_production.render")
-    elhub_production.render(section)
-
-# ... rest unchanged ...
-
-"""
 # Route to page modules
 if section == "Overview" and page == "Home":
     overview.render(section)
@@ -67,4 +53,3 @@ elif section == "Open-Meteo – Weather" and page == "Weather Anomalies":
 
 elif section == "Meta" and page == "About":
     meta_about.render(section)
-"""
