@@ -11,7 +11,7 @@ import plotly.express as px
 
 from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
-from core.geo_helpers import get_production_groups, mean_energy_by_area
+from core.geo_helpers import get_energy_groups, mean_energy_by_area
 from core.elhub_energy import load_area_energy_series
 
 # Folder of THIS file (pages/price_area_map.py)
@@ -82,8 +82,9 @@ def render(section: str):
         year = st.selectbox("Year", [2021, 2022, 2023, 2024], index=0)
 
     with col3:
-        prod_groups = get_production_groups()
-        selected_group = st.selectbox("Energy group", prod_groups)
+        energy_groups = get_energy_groups(data_type)
+        selected_group = st.selectbox("Energy group", energy_groups)
+
 
     c4, c5 = st.columns(2)
     with c4:
