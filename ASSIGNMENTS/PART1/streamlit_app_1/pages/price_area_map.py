@@ -9,8 +9,9 @@ import folium
 from streamlit_folium import st_folium
 
 from core.constants import AREAS_DF
-from core.ui import section_badge, apply_section_theme
+from core.ui import section_badge, apply_section_theme, style_plotly
 from core.geo_helpers import get_production_groups, mean_production_by_area, _area_to_feature_code
+from core.elhub_energy import load_area_energy_series
 
 # Folder of THIS file (pages/price_area_map.py)
 HERE = Path(__file__).resolve().parent
@@ -171,6 +172,45 @@ def render(section: str):
 
     # 10) Render map with click capture
     map_data = st_folium(m, height=600, width="stretch")
+
+    # --- Energy stats for the selected area and time period ---
+
+    st.subheader("Energy in selected area")
+
+    energy_df = load_area_energy_series(
+        energy_type=data_type,         # "Production" / "Consumption" radio
+        area=chosen_area,              # from your area selectbox
+        group=selected_group,          # from "Energy group" selectbox
+        start_ts=start_ts,
+        end_ts=end_ts,
+    )
+
+    if energy_df.empty:
+        st.info(
+            "No energy data found for this combination "
+            f"({data_type}, {selected_group}, {chosen_area}, {start_ts.date()}–{end_ts.date()})."
+        )
+    else:
+        total_kwh = float(energy_df["kwh"].sum())
+        mean_kwh = float(energy_df["kwh"].mean())
+        n_hours = int(energy_df.shape[0])
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total energy (kWh)", f"{total_kwh:,.0f}")
+        c2.metric("Mean per hour (kWh)", f"{mean_kwh:,.1f}")
+        c3.metric("Hours with data", f"{n_hours:,}")
+
+        # Time series plot for the selected area and group
+        fig = px.line(
+            energy_df,
+            x="time",
+            y="kwh",
+            title=f"{data_type} – {selected_group} in {chosen_area}",
+            labels={"time": "Time", "kwh": "kWh"},
+        )
+        fig = style_plotly(fig, section)
+        st.plotly_chart(fig, width="stretch")
+
 
     # 11) Store clicked coordinate in session and show it
     last_clicked = map_data.get("last_clicked") if map_data else None
