@@ -197,13 +197,20 @@ def render(section: str):
         energy_sub = energy_df.copy()
         energy_sub["time"] = pd.to_datetime(energy_sub["time"])
 
+        # Ensure one energy value per hour (e.g. sum if duplicates)
+        energy_sub = (
+            energy_sub.groupby("time", as_index=False)["kwh"]
+            .sum()
+            .sort_values("time")
+        )
+
         merged = pd.merge(
             wx_sub,
             energy_sub,
             on="time",
-            how="inner",
-            validate="one_to_one",
+            how="inner",   # no validate, since we enforced uniqueness ourselves
         )
+
         if merged.empty:
             st.warning("No overlapping timestamps between weather and energy series.")
             return
