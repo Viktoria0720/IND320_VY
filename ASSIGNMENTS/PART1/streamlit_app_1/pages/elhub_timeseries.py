@@ -3,10 +3,12 @@ import streamlit as st
 from core.constants import AREAS_DF
 from core.mongo_elhub import elhub_available_years, load_elhub_for_area
 from core.analytics import stl_decompose_production, production_spectrogram
-from core.ui import section_badge
+from core.ui import section_badge, apply_section_theme, style_plotly
+
 
 def render(section: str):
     section_badge("Elhub – Production", section)
+    apply_section_theme(section)
     st.title("Production Time Series – STL & Spectrogram")
 
     area_codes = AREAS_DF["area"].tolist()
@@ -49,6 +51,7 @@ def render(section: str):
             period=int(period), seasonal=int(seasonal),
             trend=int(trend), robust=robust
         )
+        fig = style_plotly(fig, section)
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
@@ -63,6 +66,7 @@ def render(section: str):
             prod_df, area=area, group=group2,
             window_len=int(window_len), overlap=float(overlap)
         )
+        fig = style_plotly(fig, section)
         st.plotly_chart(fig, use_container_width=True)
 
     with st.expander("Data info"):

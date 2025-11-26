@@ -8,10 +8,12 @@ try:
 except Exception:
     px = None
 
-from core.ui import section_badge
+from core.ui import section_badge, apply_section_theme, style_plotly
+
 
 def render(section: str):
     area = st.session_state.get("area", "NO5")
+    apply_section_theme(section)
     section_badge("Open-Meteo – Weather", section)
     st.title(f"Weather Overview (Open-Meteo 2021) — {area}")
 
@@ -84,4 +86,5 @@ def render(section: str):
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 hovermode="x unified",
             )
+            fig = style_plotly(fig, section)
             st.plotly_chart(fig, use_container_width=True)

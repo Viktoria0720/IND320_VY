@@ -4,6 +4,7 @@ from core.constants import AREAS_DF
 from core.ui import section_badge
 
 def render(section: str):
+    apply_section_theme(section)
     section_badge("Overview", section)
     st.title("Welcome to the IND320 App 🌦️⚡")
     st.write(

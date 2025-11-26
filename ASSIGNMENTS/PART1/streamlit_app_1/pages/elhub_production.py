@@ -23,9 +23,11 @@ from core.mongo_elhub import (
     list_months_for_year,
     monthly_series,
 )
-from core.ui import section_badge
+from core.ui import section_badge, apply_section_theme, style_plotly
+
 
 def render(section: str):
+    apply_section_theme(section)
     section_badge("Elhub – Production", section)
     st.title("Production Dashboard (Elhub + Open-Meteo)")
 
@@ -76,6 +78,7 @@ def render(section: str):
                 st.altair_chart(chart, use_container_width=True)
             elif px is not None:
                 fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
+                fig = style_plotly(fig, section)
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.dataframe(pie_df, use_container_width=True)
@@ -121,6 +124,7 @@ def render(section: str):
                 elif px is not None:
                     fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
                     fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
+                    fig2 = style_plotly(fig2, section)
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
                     st.line_chart(

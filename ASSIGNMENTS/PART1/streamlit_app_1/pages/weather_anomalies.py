@@ -1,10 +1,12 @@
 # pages/weather_anomalies.py
 import streamlit as st
 from core.analytics import spc_outliers_temperature, lof_precip_anomalies
-from core.ui import section_badge
+from core.ui import section_badge, apply_section_theme, style_plotly
+
 
 def render(section: str):
     area = st.session_state.get("area", "NO5")
+    apply_section_theme(section)
     section_badge("Open-Meteo – Weather", section)
     st.title(f"Weather Anomalies (SPC & LOF) — {area}")
 
@@ -25,6 +27,7 @@ def render(section: str):
             dct_cutoff=float(dct_cutoff),
             n_sigma=float(n_sigma),
         )
+        fig = style_plotly(fig, section)
         st.plotly_chart(fig, use_container_width=True)
         st.write("Summary:", summary_df)
         st.write("Outlier samples:", out_df.head(50))
@@ -39,6 +42,7 @@ def render(section: str):
             contamination=float(contamination),
             n_neighbors=int(n_neighbors),
         )
+        fig = style_plotly(fig, section)
         st.plotly_chart(fig, use_container_width=True)
         st.write("Summary:", summary_df)
         st.write("Anomaly samples:", anoms_df.head(50))
