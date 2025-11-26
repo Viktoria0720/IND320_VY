@@ -10,7 +10,7 @@ from streamlit_folium import st_folium
 
 from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
-from core.geo_helpers import get_production_groups, mean_production_by_area, _area_to_feature_code
+from core.geo_helpers import get_production_groups, mean_production_by_area
 from core.elhub_energy import load_area_energy_series
 
 # Folder of THIS file (pages/price_area_map.py)
@@ -33,7 +33,14 @@ def load_geojson():
         st.error(f"GeoJSON file not found at {GEOJSON_PATH}")
         raise
 
-
+def _area_to_feature_code(area_code: str) -> str:
+    """
+    Convert internal code 'NO1' to the GeoJSON code 'NO 1', etc.
+    """
+    area_code = area_code.strip().upper()
+    if area_code.startswith("NO") and len(area_code) == 3:
+        return f"NO {area_code[-1]}"
+    return area_code
 
 
 def render(section: str):

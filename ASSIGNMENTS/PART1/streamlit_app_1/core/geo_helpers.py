@@ -42,12 +42,5 @@ def mean_production_by_area(group: str, start: pd.Timestamp, end: pd.Timestamp) 
 
     return pd.DataFrame(results)
 
-@st.cache_data(show_spinner=True)
-def _area_to_feature_code(area_code: str) -> str:
-    """
-    Convert internal code 'NO1' to the GeoJSON code 'NO 1', etc.
-    """
-    area_code = area_code.strip().upper()
-    if area_code.startswith("NO") and len(area_code) == 3:
-        return f"NO {area_code[-1]}"
-    return area_code
+
+
