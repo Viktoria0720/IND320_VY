@@ -5,7 +5,7 @@ SECTIONS = {
     "Overview": ["Home"],
     "Elhub – Production": ["Production Dashboard", "Production Time Series"],
     "Maps": ["Price Area Map"], 
-    "Open-Meteo – Weather": ["Weather Overview", "Weather Anomalies","Snow Drift",],
+    "Open-Meteo – Weather": ["Weather Overview", "Weather Anomalies","Snow Drift","Met–Energy Correlation"],
     "Meta": ["About"],
 }
 

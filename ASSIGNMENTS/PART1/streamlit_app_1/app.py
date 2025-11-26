@@ -10,6 +10,7 @@ from pages import (
     weather_overview,
     weather_anomalies,
     snow_drift_page, 
+    met_energy_corr,
     price_area_map, 
     meta_about,
 )
@@ -56,6 +57,9 @@ elif section == "Open-Meteo – Weather" and page == "Weather Anomalies":
 
 elif section == "Open-Meteo – Weather" and page == "Snow Drift":
     snow_drift_page.render(section)
+
+elif section == "Open-Meteo – Weather" and page == "Met–Energy Correlation":
+    met_energy_corr.render(section)
 
 elif section == "Maps" and page == "Price Area Map":
     price_area_map.render(section)
