@@ -58,8 +58,8 @@ def _get_elhub_collections():
 
     db = client[db_name]
 
-    # Adjust names if your collections are named differently:
-    prod_name = os.getenv("MONGO_PROD_COLL", "elhub_production_2021_2024")
+    # These defaults now match your notebook:
+    prod_name = os.getenv("MONGO_PROD_COLL", "elhub_production_2021")
     cons_name = os.getenv("MONGO_CONS_COLL", "elhub_consumption_2021_2024")
 
     return db[prod_name], db[cons_name]
