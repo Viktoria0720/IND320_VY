@@ -3,44 +3,60 @@ import pandas as pd
 import streamlit as st
 
 from core.constants import AREAS_DF
-from core.mongo_elhub import load_elhub_for_area, list_groups
+from core.mongo_elhub import list_groups
+from core.elhub_energy import load_area_energy_series
 
 AREA_CODES = AREAS_DF["area"].tolist()
+
 
 @st.cache_data(show_spinner=True)
 def get_production_groups() -> list[str]:
     """
     Return a sorted list of production groups available somewhere
-    (we just sample from NO1 to avoid scanning everything).
+    (we just sample from the first area to avoid scanning everything).
     """
     sample_area = AREA_CODES[0]
     groups = list_groups(sample_area)
     return sorted(groups)
 
+
 @st.cache_data(show_spinner=True)
-def mean_production_by_area(group: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+def mean_energy_by_area(
+    data_type: str,  # "Production" or "Consumption"
+    group: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+) -> pd.DataFrame:
     """
-    Compute mean hourly production for each area in [start, end)
-    for the given production group. Assumes interval stays inside one calendar year.
+    Compute mean hourly energy for each area in [start, end)
+    for the given production/consumption group.
+    Uses load_area_energy_series under the hood.
     """
     results = []
-    year = start.year
 
     for area in AREA_CODES:
-        df = load_elhub_for_area(area, year)
+        df = load_area_energy_series(
+            energy_type=data_type,
+            area=area,
+            group=group,
+            start_ts=start,
+            end_ts=end,
+        )
         if df.empty:
-            mean_val = float("nan")
+            mean_val = 0.0
         else:
-            mask = (
-                (df["group"] == group) &
-                (df["time"] >= start) &
-                (df["time"] < end)
-            )
-            mean_val = df.loc[mask, "production"].mean()
+            m = df["kwh"].mean()
+            mean_val = float(m) if pd.notna(m) else 0.0
 
-        results.append({"area": area, "mean_value": float(mean_val) if pd.notna(mean_val) else 0.0})
+        results.append({"area": area, "mean_value": mean_val})
 
     return pd.DataFrame(results)
 
+
+# Optional: keep this for any other code that already imports it
+@st.cache_data(show_spinner=True)
+def mean_production_by_area(group: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
+    """Backwards-compatible wrapper for production only."""
+    return mean_energy_by_area("Production", group, start, end)
 
 

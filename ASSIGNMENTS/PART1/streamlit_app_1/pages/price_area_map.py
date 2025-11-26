@@ -7,10 +7,11 @@ import pandas as pd
 import streamlit as st
 import folium
 from streamlit_folium import st_folium
+import plotly.express as px  
 
 from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
-from core.geo_helpers import get_production_groups, mean_production_by_area
+from core.geo_helpers import get_production_groups, mean_energy_by_area
 from core.elhub_energy import load_area_energy_series
 
 # Folder of THIS file (pages/price_area_map.py)
@@ -19,9 +20,6 @@ HERE = Path(__file__).resolve().parent
 # If file.geojson lives next to app.py one level up from pages/
 GEOJSON_PATH = HERE.parent / "file.geojson"
 GEOJSON_AREA_PROP = "ElSpotOmr"
-st.write("GeoJSON_PATH (resolved):", GEOJSON_PATH)
-     
-
 
 
 @st.cache_data(show_spinner=False)
@@ -99,12 +97,14 @@ def render(section: str):
 
     st.caption(f"Interval: {start_ts.date()} → {end_ts.date()} (not inclusive)")
 
-    # 5) Compute mean values per area (for now: production only)
-    if data_type == "Production":
-        mean_df = mean_production_by_area(selected_group, start_ts, end_ts)
-    else:
-        st.warning("Consumption choropleth not yet wired – using production as placeholder.")
-        mean_df = mean_production_by_area(selected_group, start_ts, end_ts)
+    # 5) Compute mean values per area for the selected data type
+    mean_df = mean_energy_by_area(
+        data_type=data_type,   # "Production" or "Consumption"
+        group=selected_group,
+        start=start_ts,
+        end=end_ts,
+    )
+
 
     # Map internal 'NO1' → GeoJSON 'NO 1'
     mean_df = mean_df.copy()

@@ -54,6 +54,8 @@ def _get_elhub_collections():
     return coll_prod, coll_cons
 
 
+# core/elhub_energy.py
+
 @st.cache_data(show_spinner=True)
 def load_area_energy_series(
     energy_type: EnergyType,
@@ -76,10 +78,9 @@ def load_area_energy_series(
 
     group_field = "productionGroup" if energy_type == "Production" else "consumptionGroup"
 
-    # Use year to reduce DB scan (you already stored it when inserting)
+    # Primary query: use year if present in the collection (fast path)
     year = int(start_ts.year)
-
-    query = {
+    query_year = {
         "priceArea": area,
         group_field: group,
         "year": year,
@@ -87,7 +88,7 @@ def load_area_energy_series(
 
     docs = list(
         coll.find(
-            query,
+            query_year,
             {
                 "_id": 0,
                 "startTime": 1,
@@ -95,6 +96,23 @@ def load_area_energy_series(
             },
         )
     )
+
+    # Fallback: if nothing found, try without the 'year' field
+    if not docs:
+        query_basic = {
+            "priceArea": area,
+            group_field: group,
+        }
+        docs = list(
+            coll.find(
+                query_basic,
+                {
+                    "_id": 0,
+                    "startTime": 1,
+                    "quantityKwh": 1,
+                },
+            )
+        )
 
     if not docs:
         return pd.DataFrame(columns=["time", "kwh"])
@@ -116,3 +134,4 @@ def load_area_energy_series(
     df = df.loc[mask, ["time", "kwh"]]
 
     return df.reset_index(drop=True)
+
