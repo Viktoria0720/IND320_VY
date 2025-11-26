@@ -11,7 +11,7 @@ SECTIONS = {
 # Accent colors (badges, titles, plot accents)
 SECTION_COLORS = {
     "Overview": "#2b6777",
-    "Elhub – Production": "#ffb300",   # bright yellow/orange
+    "Elhub – Production": "#ae7be9",   
     "Open-Meteo – Weather": "#2e7d32",
     "Meta": "#9c27b0",
 }
@@ -25,7 +25,7 @@ SECTION_THEMES = {
     "Elhub – Production": {
         # MUCH more visible yellow/orange theme
         "bg": "linear-gradient(135deg, #fff8e1 0%, #ffe082 60%)",
-        "sidebar_bg": "#f57c00",
+        "sidebar_bg": "#9122db",
     },
     "Open-Meteo – Weather": {
         "bg": "linear-gradient(135deg, #e8f5e9 0%, #ffffff 60%)",
@@ -60,7 +60,7 @@ def apply_section_theme(section: str):
 
         /* SIDEBAR TEXT COLOR */
         [data-testid="stSidebar"] * {{
-            color: #f9f9f9 !important;
+            color: #b0b0b0 !important;
         }}
 
         /* HEADERS */
