@@ -52,7 +52,7 @@ def render(section: str):
             trend=int(trend), robust=robust
         )
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with tab2:
         st.subheader("Spectrogram")
@@ -67,7 +67,7 @@ def render(section: str):
             window_len=int(window_len), overlap=float(overlap)
         )
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with st.expander("Data info"):
         st.write(f"Area: **{area}**  •  Year: **{year}**  •  Rows: **{len(prod_df):,}**")

@@ -79,7 +79,7 @@ def render(section: str):
             elif px is not None:
                 fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
                 fig = style_plotly(fig, section)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             else:
                 st.dataframe(pie_df, use_container_width=True)
             st.caption(f"Year: **{DASHBOARD_YEAR}**")
@@ -125,7 +125,7 @@ def render(section: str):
                     fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
                     fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
                     fig2 = style_plotly(fig2, section)
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig2, width="stretch")
                 else:
                     st.line_chart(
                         trend_df.pivot(index="date", columns="productionGroup", values="quantityKwh")

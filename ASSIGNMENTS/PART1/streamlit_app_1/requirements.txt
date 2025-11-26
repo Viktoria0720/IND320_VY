@@ -9,3 +9,7 @@ certifi
 scipy
 scikit-learn
 statsmodels
+folium
+streamlit-folium
+requests
+

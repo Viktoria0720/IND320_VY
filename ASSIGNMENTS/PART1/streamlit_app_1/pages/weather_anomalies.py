@@ -28,7 +28,7 @@ def render(section: str):
             n_sigma=float(n_sigma),
         )
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         st.write("Summary:", summary_df)
         st.write("Outlier samples:", out_df.head(50))
 
@@ -43,6 +43,6 @@ def render(section: str):
             n_neighbors=int(n_neighbors),
         )
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         st.write("Summary:", summary_df)
         st.write("Anomaly samples:", anoms_df.head(50))

@@ -9,6 +9,7 @@ from pages import (
     elhub_timeseries,
     weather_overview,
     weather_anomalies,
+    price_area_map, 
     meta_about,
 )
 
@@ -51,6 +52,9 @@ elif section == "Open-Meteo – Weather" and page == "Weather Overview":
 
 elif section == "Open-Meteo – Weather" and page == "Weather Anomalies":
     weather_anomalies.render(section)
+
+elif section == "Maps" and page == "Price Area Map":
+    price_area_map.render(section)
 
 elif section == "Meta" and page == "About":
     meta_about.render(section)

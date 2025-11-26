@@ -45,7 +45,7 @@ def render(section: str):
                 ),
             },
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
     with tab_plots:
@@ -87,4 +87,4 @@ def render(section: str):
                 hovermode="x unified",
             )
             fig = style_plotly(fig, section)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
