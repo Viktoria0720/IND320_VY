@@ -8,21 +8,24 @@ SECTIONS = {
     "Meta": ["About"],
 }
 
+# Accent colors (badges, titles, plot accents)
 SECTION_COLORS = {
     "Overview": "#2b6777",
-    "Elhub – Production": "#ddff63",
+    "Elhub – Production": "#ffb300",   # bright yellow/orange
     "Open-Meteo – Weather": "#2e7d32",
     "Meta": "#9c27b0",
 }
 
+# Background / sidebar themes
 SECTION_THEMES = {
     "Overview": {
         "bg": "linear-gradient(135deg, #e3f2fd 0%, #ffffff 60%)",
         "sidebar_bg": "#146783",
     },
     "Elhub – Production": {
-        "bg": "linear-gradient(135deg, #f3e5f5 0%, #ffffff 60%)",
-        "sidebar_bg": "#f35b1f",
+        # MUCH more visible yellow/orange theme
+        "bg": "linear-gradient(135deg, #fff8e1 0%, #ffe082 60%)",
+        "sidebar_bg": "#f57c00",
     },
     "Open-Meteo – Weather": {
         "bg": "linear-gradient(135deg, #e8f5e9 0%, #ffffff 60%)",
@@ -47,12 +50,12 @@ def apply_section_theme(section: str):
         <style>
         /* MAIN APP BACKGROUND */
         [data-testid="stAppViewContainer"] {{
-            background: {bg};
+            background: {bg} !important;
         }}
 
         /* SIDEBAR BACKGROUND */
-        [data-testid="stSidebar"] > div:first-child {{
-            background: {sidebar_bg};
+        [data-testid="stSidebar"] {{
+            background: {sidebar_bg} !important;
         }}
 
         /* SIDEBAR TEXT COLOR */
@@ -67,7 +70,7 @@ def apply_section_theme(section: str):
 
         /* LINKS / STRONG TEXT */
         a, .stMarkdown strong {{
-            color: {accent};
+            color: {accent} !important;
         }}
         </style>
         """,
