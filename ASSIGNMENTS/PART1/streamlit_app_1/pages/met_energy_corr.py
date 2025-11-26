@@ -8,6 +8,8 @@ from core.ui import section_badge, apply_section_theme, style_plotly
 from core.constants import AREAS_DF
 from core.elhub_energy import load_area_energy_series, EnergyType
 from core.geo_helpers import get_energy_groups
+from core.mongo_elhub import load_elhub_for_area
+
 
 
 def _compute_sliding_correlation(
@@ -146,23 +148,50 @@ def render(section: str):
             ),
         )
 
-    if st.button("Compute sliding correlation", type="primary"):
+        if st.button("Compute sliding correlation", type="primary"):
         # --- 4. Load energy series from Elhub --------------------------------
-        with st.spinner("Loading Elhub energy series from Mongo …"):
-            energy_df = load_area_energy_series(
-                energy_type=data_type,
-                area=area,
-                group=energy_group,
-                start_ts=start_ts,
-                end_ts=end_ts,
-            )
+            with st.spinner("Loading Elhub energy series from Mongo …"):
+                if data_type == "Production":
+                    # Use the same loader as the other production pages
+                    prod_df = load_elhub_for_area(area, year)
+                    if prod_df.empty:
+                        st.warning(
+                            f"No production data found for area {area} in {year}. "
+                            "Try another area or year."
+                        )
+                        return
 
-        if energy_df is None or energy_df.empty:
-            st.warning(
-                f"No {data_type.lower()} data found for area {area}, "
-                f"group '{energy_group}' in {year}."
-            )
-            return
+                    df_group = prod_df[prod_df["group"] == energy_group].copy()
+                    if df_group.empty:
+                        st.warning(
+                            f"No production data found for area {area}, "
+                            f"group '{energy_group}' in {year}."
+                        )
+                        return
+
+                    energy_df = (
+                        df_group[["time", "production"]]
+                        .rename(columns={"production": "kwh"})
+                        .sort_values("time")
+                    )
+
+                else:
+                    # Consumption: still use the dedicated helper
+                    energy_df = load_area_energy_series(
+                        energy_type=data_type,
+                        area=area,
+                        group=energy_group,
+                        start_ts=start_ts,
+                        end_ts=end_ts,
+                    )
+
+            if energy_df is None or energy_df.empty:
+                st.warning(
+                    f"No {data_type.lower()} data found for area {area}, "
+                    f"group '{energy_group}' in {year}."
+                )
+                return
+
 
         # --- 5. Align weather and energy on a common hourly time index -------
         wx_sub = wx[(wx["timestamp"] >= start_ts) & (wx["timestamp"] < end_ts)].copy()
