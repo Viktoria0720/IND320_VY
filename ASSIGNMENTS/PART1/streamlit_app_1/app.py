@@ -12,6 +12,11 @@ from pages import (
     meta_about,
 )
 
+APP_VERSION = "v-2025-11-26-01"  # change this every time you deploy
+
+st.sidebar.write("APP VERSION:", APP_VERSION)
+
+
 # Page config
 st.set_page_config(page_title="IND320 • Open-Meteo + Elhub", layout="wide")
 st.markdown(
