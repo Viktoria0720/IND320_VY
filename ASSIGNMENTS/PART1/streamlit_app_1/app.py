@@ -11,6 +11,9 @@ from pages import (
     weather_anomalies,
     meta_about,
 )
+APP_VERSION = "v-2025-11-26-02"  # CHANGE this string every time you want to test
+
+st.sidebar.write("APP VERSION:", APP_VERSION)
 
 # Page config
 st.set_page_config(page_title="IND320 • Open-Meteo + Elhub", layout="wide")
