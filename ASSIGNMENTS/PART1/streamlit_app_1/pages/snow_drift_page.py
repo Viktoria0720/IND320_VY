@@ -142,6 +142,8 @@ def compute_snow_drift_for_range(
     T: float = 3000.0,
     F: float = 30000.0,
     theta: float = 0.5,
+    progress=None,
+    status=None,
 ):
     """
     Loop over seasons start_year … end_year and return
