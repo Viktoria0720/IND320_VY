@@ -246,11 +246,13 @@ def render(section: str):
                 # One row per energy timestamp, only chosen exog columns
                 ex = ex.set_index("time")[exog_vars]
 
-                # Fill gaps forwards/backwards
+                # Fill gaps forwards/backwards on the raw exog
                 ex = ex.ffill().bfill()
 
-                # Align to y index and force numeric dtype
-                exog_train = ex.loc[y.index].astype(float)
+                # 🔑 Force exog to share EXACT index with y
+                exog_train = ex.reindex(y.index)
+                exog_train = exog_train.ffill().bfill().astype(float)
+                exog_train.index = y.index  # make absolutely sure indexes match
 
                 # If something went wrong and we still have NaNs, drop exogenous
                 if exog_train.isna().any().any():
@@ -259,6 +261,7 @@ def render(section: str):
                         "ignoring exogenous variables for this run."
                     )
                     exog_train = None
+
 
 
         # 5d. Future index: assume hourly data --------------------------------
