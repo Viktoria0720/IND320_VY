@@ -142,52 +142,84 @@ def compute_snow_drift_for_range(
     T: float = 3000.0,
     F: float = 30000.0,
     theta: float = 0.5,
-    progress=None,
-    status=None,
 ):
     """
     Loop over seasons start_year … end_year and return
-    (results_df, avg_sectors, overall_avg_Qt).
+    (season_results_df, monthly_results_df, avg_sectors, overall_avg_Qt).
+
+    A 'season' is defined as 1 July (start_year) → 30 June (start_year+1).
     """
     season_rows = []
     sector_arrays = []
-    years = list(range(start_year, end_year + 1))
+    monthly_rows = []
 
-    for i, year in enumerate(years):
-        if status is not None:
-            status.write(f"Computing snow drift for season {year}-{year+1} …")
-
+    for year in range(start_year, end_year + 1):
         wx = load_season_weather(lat, lon, year)
         if wx.empty:
             continue
 
-        if progress is not None:
-            progress.progress((i + 1) / len(years))
-
-        # Hourly Swe: precipitation when T < +1°C
         wx = wx.copy()
-        wx["Swe_hourly"] = np.where(wx["temperature_2m"] < 1.0, wx["precipitation"], 0.0)
+        # Snowfall equivalent only when T < +1°C
+        wx["Swe_hourly"] = np.where(
+            wx["temperature_2m"] < 1.0, wx["precipitation"], 0.0
+        )
         Swe_total = float(wx["Swe_hourly"].sum())
 
         wind_speeds = wx["wind_speed_10m"].to_numpy(float)
         wind_dirs = wx["wind_direction_10m"].to_numpy(float)
 
-        # Tabler snow-drift calculation for this season
+        # --- Seasonal Tabler snow drift for the whole season ----------------
         res = compute_snow_transport(T, F, theta, Swe_total, wind_speeds)
         res["season"] = f"{year}-{year+1}"
+        res["season_start_year"] = year
         season_rows.append(res)
 
-        # Directional transport for wind-rose
+        # Directional transport (for wind rose)
         sectors = compute_sector_transport(wind_speeds, wind_dirs)
         sector_arrays.append(sectors)
 
-    if not season_rows:
-        return pd.DataFrame(), None, None
+        # --- Monthly breakdown within the season ----------------------------
+        wx["month_period"] = wx["timestamp"].dt.to_period("M")
 
-    df = pd.DataFrame(season_rows)
-    overall_avg_Qt = float(df["Qt (kg/m)"].mean())
+        for month_period in sorted(wx["month_period"].unique()):
+            wx_m = wx[wx["month_period"] == month_period]
+            if wx_m.empty:
+                continue
+
+            Swe_m = float(wx_m["Swe_hourly"].sum())
+            speeds_m = wx_m["wind_speed_10m"].to_numpy(float)
+
+            # If there is literally no snow and no wind, skip
+            if Swe_m == 0.0 and np.allclose(speeds_m, 0.0):
+                continue
+
+            res_m = compute_snow_transport(T, F, theta, Swe_m, speeds_m)
+
+            monthly_rows.append(
+                {
+                    "season": f"{year}-{year+1}",
+                    "season_start_year": year,
+                    "month": str(month_period),  # e.g. '2021-07'
+                    "Qt (kg/m)": res_m["Qt (kg/m)"],
+                    "Control": res_m["Control"],
+                }
+            )
+
+    if not season_rows:
+        return (
+            pd.DataFrame(),  # season_results_df
+            pd.DataFrame(),  # monthly_results_df
+            None,
+            None,
+        )
+
+    season_df = pd.DataFrame(season_rows)
+    monthly_df = pd.DataFrame(monthly_rows)
+
+    overall_avg_Qt = float(season_df["Qt (kg/m)"].mean())
     avg_sectors = np.mean(np.array(sector_arrays), axis=0) if sector_arrays else None
-    return df, avg_sectors, overall_avg_Qt
+
+    return season_df, monthly_df, avg_sectors, overall_avg_Qt
 
 
 # --- Streamlit page ----------------------------------------------------------
@@ -238,8 +270,8 @@ def render(section: str):
         status = st.empty()
         try:
             with st.spinner("Downloading ERA5 data and computing snow drift …"):
-                results_df, avg_sectors, overall_avg_Qt = compute_snow_drift_for_range(
-                    lat, lon, start_year, end_year, T=T, F=F, theta=theta, progress=progress, status=status
+                results_df, monthly_df, avg_sectors, overall_avg_Qt = compute_snow_drift_for_range(
+                lat, lon, start_year, end_year, T=T, F=F, theta=theta, progress=progress, status=status
                 )
         except Exception as e:
             progress.empty()
@@ -277,6 +309,59 @@ def render(section: str):
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Plotly not installed – showing raw table only.")
+
+        # 5b) Monthly snow drift vs seasonal
+        st.markdown("### Monthly vs seasonal snow drift")
+
+        if monthly_df is None or monthly_df.empty:
+            st.info("No monthly snow drift could be calculated.")
+        elif px is not None:
+            # Convert monthly Qt to tonnes/m
+            monthly_disp = monthly_df.copy()
+            monthly_disp["Qt (tonnes/m)"] = monthly_disp["Qt (kg/m)"] / 1000.0
+
+            seasons = list(results_df["season"])
+            season_choice = st.selectbox(
+                "Season for monthly breakdown",
+                seasons,
+                index=0,
+            )
+
+            month_sel = monthly_disp[monthly_disp["season"] == season_choice]
+            if month_sel.empty:
+                st.info(f"No monthly data for season {season_choice}.")
+            else:
+                # Seasonal Qt for comparison (tonnes/m)
+                season_Qt_tonnes = (
+                    results_df.loc[
+                        results_df["season"] == season_choice, "Qt (kg/m)"
+                    ].iloc[0]
+                    / 1000.0
+                )
+
+                fig_month = px.bar(
+                    month_sel,
+                    x="month",
+                    y="Qt (tonnes/m)",
+                    labels={
+                        "month": "Month",
+                        "Qt (tonnes/m)": "Qt [tonnes/m]",
+                    },
+                    title=f"Monthly snow drift for {season_choice}",
+                )
+                fig_month.add_hline(
+                    y=season_Qt_tonnes,
+                    line_dash="dash",
+                    annotation_text="Season Qt",
+                    annotation_position="top left",
+                )
+                fig_month = style_plotly(fig_month, section)
+                st.plotly_chart(fig_month, width="stretch")
+        else:
+            st.info(
+                "Plotly is not installed – monthly snow drift results are available only as tables."
+            )
+            st.dataframe(monthly_df, width="stretch")
 
         # 6) Wind-rose using the average sector transport
         st.markdown("### Wind rose (average directional distribution)")
