@@ -142,6 +142,8 @@ def compute_snow_drift_for_range(
     T: float = 3000.0,
     F: float = 30000.0,
     theta: float = 0.5,
+    progress=None,
+    status=None,
 ):
     """
     Loop over seasons start_year … end_year and return
@@ -149,11 +151,18 @@ def compute_snow_drift_for_range(
     """
     season_rows = []
     sector_arrays = []
+    years = list(range(start_year, end_year + 1))
 
-    for year in range(start_year, end_year + 1):
+    for i, year in enumerate(years):
+        if status is not None:
+            status.write(f"Computing snow drift for season {year}-{year+1} …")
+
         wx = load_season_weather(lat, lon, year)
         if wx.empty:
             continue
+
+        if progress is not None:
+            progress.progress((i + 1) / len(years))
 
         # Hourly Swe: precipitation when T < +1°C
         wx = wx.copy()
@@ -225,10 +234,20 @@ def render(section: str):
 
     # 3) Button → do the actual work
     if st.button("Compute snow drift", type="primary"):
-        with st.spinner("Downloading ERA5 data and computing snow drift …"):
-            results_df, avg_sectors, overall_avg_Qt = compute_snow_drift_for_range(
-                lat, lon, start_year, end_year, T=T, F=F, theta=theta
-            )
+        progress = st.progress(0.0)
+        status = st.empty()
+        try:
+            with st.spinner("Downloading ERA5 data and computing snow drift …"):
+                results_df, avg_sectors, overall_avg_Qt = compute_snow_drift_for_range(
+                    lat, lon, start_year, end_year, T=T, F=F, theta=theta, progress=progress, status=status
+                )
+        except Exception as e:
+            progress.empty()
+            status.empty()
+            st.error("Could not download ERA5 data or compute snow drift.")
+            with st.expander("Show technical details"):
+                st.exception(e)
+            return
 
         if results_df.empty:
             st.warning("No weather data returned for this year range – try a different range.")

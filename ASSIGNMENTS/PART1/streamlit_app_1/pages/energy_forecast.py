@@ -161,7 +161,13 @@ def render(section: str):
                 years = list(range(start_ts.year, end_ts.year + 1))
                 frames = []
                 for yr in years:
-                    df_y = load_elhub_for_area(area, yr)
+                    try:
+                        df_y = load_elhub_for_area(area, yr)
+                    except Exception:
+                        st.error(f"Failed to load production data for area {area} in year {yr}.")
+                        with st.expander("Show error details"):
+                            st.exception()
+                        return
                     if df_y is None or df_y.empty:
                         continue
                     frames.append(df_y)
@@ -197,14 +203,20 @@ def render(section: str):
                 )
 
             else:
-                # Consumption via dedicated helper (uses combined 2021–2024 collection)
-                energy_df = load_area_energy_series(
-                    energy_type=energy_type,
-                    area=area,
-                    group=group,
-                    start_ts=start_ts,
-                    end_ts=end_ts,
-                )
+                try:
+                    energy_df = load_area_energy_series(
+                        energy_type=energy_type,
+                        area=area,
+                        group=group,
+                        start_ts=start_ts,
+                        end_ts=end_ts,
+                    )
+                except Exception as e:
+                    st.error("Could not load consumption data from Mongo.")
+                    with st.expander("Technical details"):
+                        st.exception(e)
+                    return
+
 
         if energy_df is None or energy_df.empty:
             st.warning(

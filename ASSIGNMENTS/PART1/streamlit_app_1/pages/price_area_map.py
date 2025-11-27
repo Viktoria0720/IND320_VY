@@ -107,12 +107,20 @@ def render(section: str):
     st.caption(f"Interval: {start_ts.date()} → {end_ts.date()} (not inclusive)")
 
     # 5) Compute mean values per area for the selected data type + group + interval
-    mean_df = mean_energy_by_area(
-        data_type=data_type,   # "Production" or "Consumption"
-        group=selected_group,
-        start=start_ts,
-        end=end_ts,
-    )
+    try:
+        with st.spinner("Computing mean energy per price area from Mongo …"):
+            mean_df = mean_energy_by_area(
+                data_type=data_type,
+                group=selected_group,
+                start=start_ts,
+                end=end_ts,
+            )
+    except Exception as e:
+        st.error("Could not compute mean energy per area (Mongo issue?).")
+        with st.expander("Details"):
+            st.exception(e)
+        return
+
 
     # Map internal 'NO1' → GeoJSON 'NO 1'
     mean_df = mean_df.copy()
@@ -188,15 +196,21 @@ def render(section: str):
 
     # --- Energy stats for the selected area and time period ---
     st.subheader("Energy in selected area")
-
-    energy_df = load_area_energy_series(
-        energy_type=data_type,         # "Production" / "Consumption"
-        area=chosen_area,              # from your area selectbox
-        group=selected_group,          # from "Energy group" selectbox
-        start_ts=start_ts,
-        end_ts=end_ts,
-    )
-
+    try:
+        with st.spinner("Loading energy data for the chosen area …"):
+            energy_df = load_area_energy_series(
+                energy_type=data_type,         # "Production" / "Consumption"
+                area=chosen_area,              # from your area selectbox
+                group=selected_group,          # from "Energy group" selectbox
+                start_ts=start_ts,
+                end_ts=end_ts,
+            )
+    except Exception as e:
+        st.error("Could not load energy data for the chosen area.")
+        with st.expander("Details"):
+            st.exception(e)
+        return
+    
     if energy_df.empty:
         st.info(
             "No energy data found for this combination "

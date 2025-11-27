@@ -25,36 +25,42 @@ def render(section: str):
     tab_table, tab_plots = st.tabs(["Table & LineChartColumn", "Interactive Plots"])
 
     with tab_table:
-        st.subheader("Hourly weather – first month snapshot")
-        first_month = wx["timestamp"].dt.to_period("M").min()
-        df_first_month = wx[wx["timestamp"].dt.to_period("M") == first_month].copy()
         data_only = df_first_month.drop(columns=["timestamp"])
-        reshaped = pd.DataFrame({
-            "Variable": data_only.columns,
-            "Trend": [data_only[c].tolist() for c in data_only.columns],
-        })
-        st.dataframe(
-            reshaped,
-            column_config={
-                "Variable": st.column_config.TextColumn("Variable"),
-                "Trend": st.column_config.LineChartColumn(
-                    "First Month Series",
-                    y_min=float(np.nanmin(data_only.values)),
-                    y_max=float(np.nanmax(data_only.values)),
-                    width="large",
-                ),
-            },
-            hide_index=True,
-            width="stretch",
-        )
+        if np.all(np.isnan(data_only.values)):
+            st.warning("All values are NaN for the first month; cannot plot LineChartColumn.")
+        else:
+            y_min = float(np.nanmin(data_only.values))
+            y_max = float(np.nanmax(data_only.values))
 
+            reshaped = pd.DataFrame({
+                "Variable": data_only.columns,
+                "Trend": [data_only[c].tolist() for c in data_only.columns],
+            })
+            st.dataframe(
+                reshaped,
+                column_config={
+                    "Variable": st.column_config.TextColumn("Variable"),
+                    "Trend": st.column_config.LineChartColumn(
+                        "First Month Series",
+                        y_min=y_min,
+                        y_max=y_max,
+                        width="large",
+                    ),
+                },
+                hide_index=True,
+                width="stretch",
+            )
+
+            
     with tab_plots:
         st.subheader("Interactive time series (Plotly)")
         if px is None:
             st.warning("Plotly is not installed. Run `pip install plotly` to enable interactive plots.")
         else:
-            options = ["All variables"] + [c for c in wx.columns if c != "timestamp"]
-            column_choice = st.selectbox("Select variable(s)", options)
+            with st.spinner("Preparing interactive plots..."):
+                options = ["All variables"] + [c for c in wx.columns if c != "timestamp"]
+                column_choice = st.selectbox("Select variable(s)", options)
+                st.plotly_chart(fig, width="stretch")
 
             months = sorted(wx["timestamp"].dt.to_period("M").unique())
             month_selected = st.select_slider("Select a month", options=months, value=months[0])

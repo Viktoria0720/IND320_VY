@@ -26,7 +26,11 @@ def render(section: str):
     year = st.selectbox("Year", years, index=years.index(default_year))
 
     with st.spinner(f"Loading Elhub production for {area} in {year} …"):
-        prod_df = load_elhub_for_area(area, year)
+        try:
+            prod_df = load_elhub_for_area(area, year)
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            return
 
     if prod_df.empty:
         st.warning(f"No production data for {area} in {year}. Try another year.")

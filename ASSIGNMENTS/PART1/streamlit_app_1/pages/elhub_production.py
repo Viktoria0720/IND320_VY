@@ -38,8 +38,15 @@ def render(section: str):
 
     # Weather download for the selected area (2021)
     row = AREAS_DF[AREAS_DF["area"] == area].iloc[0]
-    with st.spinner(f"Downloading ERA5 hourly weather for {row.city} (2021) from Open-Meteo..."):
-        wx = get_era5_hourly(row.lat, row.lon, 2021)
+    try:
+        with st.spinner(f"Downloading ERA5 hourly weather for {row.city} (2021) from Open-Meteo..."):
+            wx = get_era5_hourly(row.lat, row.lon, 2021)
+    except Exception as e:
+        st.error("Could not download weather data from Open-Meteo.")
+        with st.expander("Technical details"):
+            st.exception(e)
+        return
+    
     st.session_state.wx2021 = wx
     st.success(f"Downloaded {len(wx)} rows for {row.city} / {area} (2021).")
 

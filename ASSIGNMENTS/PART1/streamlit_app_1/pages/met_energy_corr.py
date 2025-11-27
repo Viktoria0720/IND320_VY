@@ -149,39 +149,43 @@ def render(section: str):
     if st.button("Compute sliding correlation", type="primary"):
         # 4a. Load energy series from Mongo
         with st.spinner("Loading Elhub energy series from Mongo …"):
-            if data_type == "Production":
+            try:
+                if data_type == "Production":
                 # Use the same loader as other production pages
-                prod_df = load_elhub_for_area(area, year)
-                if prod_df.empty:
-                    st.warning(
-                        f"No production data found for area {area} in {year}. "
-                        "Try another area."
+                    prod_df = load_elhub_for_area(area, year)
+                    if prod_df.empty:
+                        st.warning(
+                            f"No production data found for area {area} in {year}. "
+                            "Try another area."
+                        )
+                        return
+
+                    df_group = prod_df[prod_df["group"] == energy_group].copy()
+                    if df_group.empty:
+                        st.warning(
+                            f"No production data found for area {area}, "
+                            f"group '{energy_group}' in {year}."
+                        )
+                        return
+
+                    energy_df = (
+                        df_group[["time", "production"]]
+                        .rename(columns={"production": "kwh"})
+                        .sort_values("time")
                     )
-                    return
 
-                df_group = prod_df[prod_df["group"] == energy_group].copy()
-                if df_group.empty:
-                    st.warning(
-                        f"No production data found for area {area}, "
-                        f"group '{energy_group}' in {year}."
+                else:
+                    # Consumption via dedicated helper
+                    energy_df = load_area_energy_series(
+                        energy_type=data_type,
+                        area=area,
+                        group=energy_group,
+                        start_ts=start_ts,
+                        end_ts=end_ts,
                     )
-                    return
-
-                energy_df = (
-                    df_group[["time", "production"]]
-                    .rename(columns={"production": "kwh"})
-                    .sort_values("time")
-                )
-
-            else:
-                # Consumption via dedicated helper
-                energy_df = load_area_energy_series(
-                    energy_type=data_type,
-                    area=area,
-                    group=energy_group,
-                    start_ts=start_ts,
-                    end_ts=end_ts,
-                )
+            except Exception as e:
+                st.error(f"Error loading {data_type.lower()} data: {e}")
+                return
 
         if energy_df is None or energy_df.empty:
             st.warning(
@@ -218,6 +222,17 @@ def render(section: str):
         merged = merged.sort_values("time")
         merged.rename(columns={"kwh": "energy_kwh"}, inplace=True)
 
+        nan_counts = merged[[met_var, "energy_kwh"]].isna().sum()
+        if nan_counts.any():
+            st.warning(
+                f"Found missing values in merged data: {nan_counts.to_dict()}. "
+                "They will be dropped before computing correlation."
+            )
+        merged = merged.dropna(subset=[met_var, "energy_kwh"])
+        if merged.empty:
+            st.error("All rows were NaN after cleaning; cannot compute correlation.")
+            return
+        
         # 4c. Compute sliding correlation
         corr_df = _compute_sliding_correlation(
             merged,
