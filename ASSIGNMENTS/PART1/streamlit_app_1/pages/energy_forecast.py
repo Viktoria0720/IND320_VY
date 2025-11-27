@@ -110,7 +110,6 @@ def render(section: str):
     if wx is not None and not wx.empty:
         wx = wx.copy()
         wx["timestamp"] = pd.to_datetime(wx["timestamp"])
-        # numeric columns as candidates
         met_candidates = [
             c for c in wx.columns
             if c != "timestamp" and pd.api.types.is_numeric_dtype(wx[c])
@@ -153,68 +152,68 @@ def render(section: str):
             help="0 disables seasonality; 24 = daily, 24*7 = weekly for hourly data.",
         )
 
-        if st.button("Run SARIMAX forecast", type="primary"):
-        # --- 5. Load energy series ------------------------------------------
-            with st.spinner("Loading energy series from Mongo…"):
-                if energy_type == "Production":
-                    # Use the same loader as the other production pages (works for all areas/groups)
-                    years = list(range(start_ts.year, end_ts.year + 1))
-                    frames = []
-                    for yr in years:
-                        df_y = load_elhub_for_area(area, yr)
-                        if df_y is None or df_y.empty:
-                            continue
-                        frames.append(df_y)
+    # --- 5. Button – EVERYTHING below stays inside this block ---------------
+    if st.button("Run SARIMAX forecast", type="primary"):
+        # 5a. Load energy series ---------------------------------------------
+        with st.spinner("Loading energy series from Mongo…"):
+            if energy_type == "Production":
+                # Use same loader as other production pages; support multi-year windows
+                years = list(range(start_ts.year, end_ts.year + 1))
+                frames = []
+                for yr in years:
+                    df_y = load_elhub_for_area(area, yr)
+                    if df_y is None or df_y.empty:
+                        continue
+                    frames.append(df_y)
 
-                    if not frames:
-                        st.warning(
-                            f"No production data found for area {area} in years {years}."
-                        )
-                        return
-
-                    prod_all = (
-                        pd.concat(frames, ignore_index=True)
-                        .sort_values("time")
-                        .reset_index(drop=True)
+                if not frames:
+                    st.warning(
+                        f"No production data found for area {area} in years {years}."
                     )
+                    return
 
-                    # Restrict to training window and selected group
-                    mask = (prod_all["time"] >= start_ts) & (prod_all["time"] < end_ts)
-                    prod_all = prod_all.loc[mask]
-
-                    df_group = prod_all[prod_all["group"] == group].copy()
-                    if df_group.empty:
-                        st.warning(
-                            f"No production data found for area {area}, "
-                            f"group '{group}' in the chosen period."
-                        )
-                        return
-
-                    energy_df = (
-                        df_group[["time", "production"]]
-                        .rename(columns={"production": "kwh"})
-                        .sort_values("time")
-                    )
-
-                else:
-                    # Consumption via dedicated helper (uses combined 2021–2024 collection)
-                    energy_df = load_area_energy_series(
-                        energy_type=energy_type,
-                        area=area,
-                        group=group,
-                        start_ts=start_ts,
-                        end_ts=end_ts,
-                    )
-
-            if energy_df is None or energy_df.empty:
-                t.warning(
-                    f"No {energy_type.lower()} data found for area {area}, "
-                    f"group '{group}' in the chosen period."
+                prod_all = (
+                    pd.concat(frames, ignore_index=True)
+                    .sort_values("time")
+                    .reset_index(drop=True)
                 )
-                return
 
+                # Restrict to training window and selected group
+                mask = (prod_all["time"] >= start_ts) & (prod_all["time"] < end_ts)
+                prod_all = prod_all.loc[mask]
 
-        # Use hourly time index and kWh as target
+                df_group = prod_all[prod_all["group"] == group].copy()
+                if df_group.empty:
+                    st.warning(
+                        f"No production data found for area {area}, "
+                        f"group '{group}' in the chosen period."
+                    )
+                    return
+
+                energy_df = (
+                    df_group[["time", "production"]]
+                    .rename(columns={"production": "kwh"})
+                    .sort_values("time")
+                )
+
+            else:
+                # Consumption via dedicated helper (uses combined 2021–2024 collection)
+                energy_df = load_area_energy_series(
+                    energy_type=energy_type,
+                    area=area,
+                    group=group,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                )
+
+        if energy_df is None or energy_df.empty:
+            st.warning(
+                f"No {energy_type.lower()} data found for area {area}, "
+                f"group '{group}' in the chosen period."
+            )
+            return
+
+        # 5b. Use hourly time index and kWh as target ------------------------
         energy_df = energy_df.copy()
         energy_df["time"] = pd.to_datetime(energy_df["time"])
         energy_df = energy_df.sort_values("time")
@@ -224,7 +223,7 @@ def render(section: str):
             st.warning("Not enough data in the training window (need at least 48 points).")
             return
 
-        # --- 6. Build exogenous matrices -----------------------------------
+        # 5c. Build exogenous matrices ---------------------------------------
         exog_train = None
         exog_forecast = None
 
@@ -247,7 +246,7 @@ def render(section: str):
 
                 exog_train = ex.loc[y.index]
 
-        # Future index: assume hourly data
+        # 5d. Future index: assume hourly data --------------------------------
         last_time = y.index[-1]
         freq = pd.Timedelta(hours=1)
         future_index = pd.date_range(last_time + freq, periods=steps, freq=freq)
@@ -260,7 +259,7 @@ def render(section: str):
                 index=future_index,
             )
 
-        # --- 7. Fit SARIMAX and forecast ------------------------------------
+        # 5e. Fit SARIMAX and forecast ---------------------------------------
         order = (int(p), int(d), int(q))
         if seasonal_period > 0:
             seasonal_order = (int(P), int(D), int(Q), int(seasonal_period))
@@ -298,14 +297,13 @@ def render(section: str):
         if conf_int.shape[1] == 2:
             conf_int.columns = ["lower", "upper"]
         else:
-            # statsmodels sometimes names them like 'lower y', 'upper y'
             lower_col = [c for c in conf_int.columns if "lower" in c.lower()][0]
             upper_col = [c for c in conf_int.columns if "upper" in c.lower()][0]
             conf_int = conf_int[[lower_col, upper_col]].rename(
                 columns={lower_col: "lower", upper_col: "upper"}
             )
 
-        # --- 8. Assemble plot DataFrame -------------------------------------
+        # 5f. Assemble plot DataFrame ----------------------------------------
         hist_df = y.to_frame(name="y")
         fc_df = pd.DataFrame(
             {
@@ -316,7 +314,7 @@ def render(section: str):
             }
         ).set_index("time")
 
-        # --- 9. Plot with Plotly -------------------------------------------
+        # 5g. Plot with Plotly -----------------------------------------------
         if go is None:
             st.error("plotly is not installed; add `plotly` to requirements.txt.")
         else:
@@ -338,7 +336,6 @@ def render(section: str):
                     name="Forecast",
                 )
             )
-            # Confidence band
             fig.add_trace(
                 go.Scatter(
                     x=fc_df.index.tolist() + fc_df.index[::-1].tolist(),
@@ -362,6 +359,6 @@ def render(section: str):
             fig = style_plotly(fig, section)
             st.plotly_chart(fig, width="stretch")
 
-        # --- 10. Model summary snippet --------------------------------------
+        # 5h. Model summary ---------------------------------------------------
         with st.expander("Model summary (truncated)"):
             st.text(str(results.summary())[:2000])
