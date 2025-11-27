@@ -235,16 +235,31 @@ def render(section: str):
                 wx_sub.rename(columns={"timestamp": "time"}, inplace=True)
                 wx_sub["time"] = pd.to_datetime(wx_sub["time"])
 
-                # Join to ensure exog is aligned to y
+                # Join to ensure exog is aligned to the energy time index
                 ex = pd.merge(
                     energy_df[["time"]],
                     wx_sub,
                     on="time",
                     how="left",
                 )
-                ex = ex.set_index("time")[exog_vars].fillna(method="ffill").fillna(method="bfill")
 
-                exog_train = ex.loc[y.index]
+                # One row per energy timestamp, only chosen exog columns
+                ex = ex.set_index("time")[exog_vars]
+
+                # Fill gaps forwards/backwards
+                ex = ex.ffill().bfill()
+
+                # Align to y index and force numeric dtype
+                exog_train = ex.loc[y.index].astype(float)
+
+                # If something went wrong and we still have NaNs, drop exogenous
+                if exog_train.isna().any().any():
+                    st.warning(
+                        "Exogenous variables still contain missing values after filling; "
+                        "ignoring exogenous variables for this run."
+                    )
+                    exog_train = None
+
 
         # 5d. Future index: assume hourly data --------------------------------
         last_time = y.index[-1]
@@ -257,7 +272,7 @@ def render(section: str):
                 np.tile(last_exog.values, (steps, 1)),
                 columns=exog_train.columns,
                 index=future_index,
-            )
+            ).astype(float)
 
         # 5e. Fit SARIMAX and forecast ---------------------------------------
         order = (int(p), int(d), int(q))
