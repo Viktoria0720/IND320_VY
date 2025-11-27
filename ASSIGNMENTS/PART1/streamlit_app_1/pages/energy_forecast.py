@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import streamlit as st
+from core.mongo_elhub import load_elhub_for_area
 
 try:
     import plotly.graph_objects as go
@@ -152,23 +153,66 @@ def render(section: str):
             help="0 disables seasonality; 24 = daily, 24*7 = weekly for hourly data.",
         )
 
-    if st.button("Run SARIMAX forecast", type="primary"):
+        if st.button("Run SARIMAX forecast", type="primary"):
         # --- 5. Load energy series ------------------------------------------
-        with st.spinner("Loading energy series from Mongo…"):
-            energy_df = load_area_energy_series(
-                energy_type=energy_type,
-                area=area,
-                group=group,
-                start_ts=start_ts,
-                end_ts=end_ts,
-            )
+            with st.spinner("Loading energy series from Mongo…"):
+                if energy_type == "Production":
+                    # Use the same loader as the other production pages (works for all areas/groups)
+                    years = list(range(start_ts.year, end_ts.year + 1))
+                    frames = []
+                    for yr in years:
+                        df_y = load_elhub_for_area(area, yr)
+                        if df_y is None or df_y.empty:
+                            continue
+                        frames.append(df_y)
 
-        if energy_df is None or energy_df.empty:
-            st.warning(
-                f"No {energy_type.lower()} data found for area {area}, "
-                f"group '{group}' in the chosen period."
-            )
-            return
+                    if not frames:
+                        st.warning(
+                            f"No production data found for area {area} in years {years}."
+                        )
+                        return
+
+                    prod_all = (
+                        pd.concat(frames, ignore_index=True)
+                        .sort_values("time")
+                        .reset_index(drop=True)
+                    )
+
+                    # Restrict to training window and selected group
+                    mask = (prod_all["time"] >= start_ts) & (prod_all["time"] < end_ts)
+                    prod_all = prod_all.loc[mask]
+
+                    df_group = prod_all[prod_all["group"] == group].copy()
+                    if df_group.empty:
+                        st.warning(
+                            f"No production data found for area {area}, "
+                            f"group '{group}' in the chosen period."
+                        )
+                        return
+
+                    energy_df = (
+                        df_group[["time", "production"]]
+                        .rename(columns={"production": "kwh"})
+                        .sort_values("time")
+                    )
+
+                else:
+                    # Consumption via dedicated helper (uses combined 2021–2024 collection)
+                    energy_df = load_area_energy_series(
+                        energy_type=energy_type,
+                        area=area,
+                        group=group,
+                        start_ts=start_ts,
+                        end_ts=end_ts,
+                    )
+
+            if energy_df is None or energy_df.empty:
+                t.warning(
+                    f"No {energy_type.lower()} data found for area {area}, "
+                    f"group '{group}' in the chosen period."
+                )
+                return
+
 
         # Use hourly time index and kWh as target
         energy_df = energy_df.copy()
