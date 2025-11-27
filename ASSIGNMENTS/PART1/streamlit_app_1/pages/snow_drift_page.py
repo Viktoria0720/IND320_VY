@@ -150,14 +150,25 @@ def compute_snow_drift_for_range(
     (season_results_df, monthly_results_df, avg_sectors, overall_avg_Qt).
 
     A 'season' is defined as 1 July (start_year) → 30 June (start_year+1).
+    Optional `progress` and `status` are Streamlit widgets for a progress bar
+    and text status.
     """
     season_rows = []
     sector_arrays = []
     monthly_rows = []
 
-    for year in range(start_year, end_year + 1):
+    years = list(range(start_year, end_year + 1))
+    n_years = len(years) if years else 1
+
+    for i, year in enumerate(years):
+        if status is not None:
+            status.write(f"Computing snow drift for season {year}-{year+1} …")
+
         wx = load_season_weather(lat, lon, year)
         if wx.empty:
+            # still advance progress a bit
+            if progress is not None:
+                progress.progress((i + 1) / n_years)
             continue
 
         wx = wx.copy()
@@ -207,6 +218,10 @@ def compute_snow_drift_for_range(
                 }
             )
 
+        # update progress
+        if progress is not None:
+            progress.progress((i + 1) / n_years)
+
     if not season_rows:
         return (
             pd.DataFrame(),  # season_results_df
@@ -222,6 +237,7 @@ def compute_snow_drift_for_range(
     avg_sectors = np.mean(np.array(sector_arrays), axis=0) if sector_arrays else None
 
     return season_df, monthly_df, avg_sectors, overall_avg_Qt
+
 
 
 # --- Streamlit page ----------------------------------------------------------
@@ -273,7 +289,15 @@ def render(section: str):
         try:
             with st.spinner("Downloading ERA5 data and computing snow drift …"):
                 results_df, monthly_df, avg_sectors, overall_avg_Qt = compute_snow_drift_for_range(
-                lat, lon, start_year, end_year, T=T, F=F, theta=theta, progress=progress, status=status
+                    lat,
+                    lon,
+                    start_year,
+                    end_year,
+                    T=T,
+                    F=F,
+                    theta=theta,
+                    progress=progress,
+                    status=status,
                 )
         except Exception as e:
             progress.empty()
@@ -286,6 +310,8 @@ def render(section: str):
         if results_df.empty:
             st.warning("No weather data returned for this year range – try a different range.")
             return
+        progress.empty()
+        status.empty()
 
         # 4) Tabular results
         st.markdown("### Seasonal results")
