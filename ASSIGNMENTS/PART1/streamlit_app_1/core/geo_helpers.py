@@ -59,18 +59,22 @@ def mean_energy_by_area(
     results = []
 
     for area in AREA_CODES:
-        df = load_area_energy_series(
-            energy_type=data_type,
-            area=area,
-            group=group,
-            start_ts=start,
-            end_ts=end,
-        )
-        if df.empty:
+        try:
+            df = load_area_energy_series(
+                energy_type=data_type,
+                area=area,
+                group=group,
+                start_ts=start,
+                end_ts=end,
+            )
+        except Exception:
             mean_val = 0.0
         else:
-            m = df["kwh"].mean()
-            mean_val = float(m) if pd.notna(m) else 0.0
+            if df.empty:
+                mean_val = 0.0
+            else:
+                m = df["kwh"].mean()
+                mean_val = float(m) if pd.notna(m) else 0.0
 
         results.append({"area": area, "mean_value": mean_val})
 

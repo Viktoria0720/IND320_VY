@@ -66,7 +66,7 @@ def apply_section_theme(section: str):
 
         /* SIDEBAR TEXT COLOR */
         [data-testid="stSidebar"] * {{
-            color: #999999 !important;
+            color: #FFFFFF !important;
         }}
 
         /* HEADERS */

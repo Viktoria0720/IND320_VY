@@ -40,8 +40,15 @@ def _get_mongo_client() -> MongoClient:
     if not uri:
         uri = "mongodb://localhost:27017"
 
-    return MongoClient(uri, tls=True, tlsCAFile=certifi.where())
+    try:
+        return MongoClient(uri, tls=True, tlsCAFile=certifi.where())
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to create MongoDB client. "
+            "Check MONGO_URI / [mongo] secrets and TLS certificates."
+        ) from e
 
+    
 
 @st.cache_resource(show_spinner=False)
 def _get_elhub_collections():
@@ -101,6 +108,22 @@ def load_area_energy_series(
         "startTime": {"$gte": start_utc.to_pydatetime(), "$lt": end_utc.to_pydatetime()},
     }
 
+    try:
+        docs = list(
+            coll.find(
+                query,
+                {
+                    "_id": 0,
+                    "startTime": 1,
+                    "quantityKwh": 1,
+                    raw_group_field: 1,
+                },
+            )
+        )
+    except Exception as e:
+        raise RuntimeError(f"Mongo query failed for {energy_type} / {area} / {group}."
+        ) from e
+    
     docs = list(
         coll.find(
             query,

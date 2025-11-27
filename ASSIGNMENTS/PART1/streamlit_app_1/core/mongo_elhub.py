@@ -21,10 +21,12 @@ def _get_mongo_collection():
     coll_name = st.secrets["mongo"].get("collection")
     if not uri or not db_name or not coll_name:
         raise RuntimeError("Secrets missing one of: uri / db / collection.")
-
-    client = MongoClient(uri, tls=True, tlsCAFile=certifi.where())
-    db = client[db_name]
-    return db[coll_name]
+    try:
+        client = MongoClient(uri, tls=True, tlsCAFile=certifi.where())
+        db = client[db_name]
+        return db[coll_name]
+    except Exception as e:
+        raise RuntimeError(f"Failed to connect to MongoDB: {e}")
 
 def _agg(coll, pipeline):
     """Aggregate with disk spill enabled."""

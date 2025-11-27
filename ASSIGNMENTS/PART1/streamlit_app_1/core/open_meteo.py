@@ -37,10 +37,20 @@ def get_era5_hourly(
         "models": "era5",
         "timezone": timezone,
     }
-    r = requests.get(OPEN_METEO_BASE, params=params, timeout=60)
-    r.raise_for_status()
-    data = r.json()
+    try: 
+        r = requests.get(OPEN_METEO_BASE, params=params, timeout=60)
+        r.raise_for_status()
+    except requests.exceptions.Timeout as e:
+        raise RuntimeError("Request to Open-Meteo API timed out") from e
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Request to Open-Meteo API failed: {e}") from e
+    try:
+        data = r.json()
+    except ValueError as e:
+        raise RuntimeError("Failed to parse JSON response from Open-Meteo API") from e
     hourly = data.get("hourly", {})
+    if not hourly:
+        raise RuntimeError("No hourly data found in Open-Meteo API response")
     df = pd.DataFrame(hourly)
     if df.empty:
         return df
