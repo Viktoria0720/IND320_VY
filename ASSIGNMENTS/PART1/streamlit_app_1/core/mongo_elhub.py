@@ -21,10 +21,12 @@ def _get_mongo_collection():
     coll_name = st.secrets["mongo"].get("collection")
     if not uri or not db_name or not coll_name:
         raise RuntimeError("Secrets missing one of: uri / db / collection.")
-
-    client = MongoClient(uri, tls=True, tlsCAFile=certifi.where())
-    db = client[db_name]
-    return db[coll_name]
+    try:
+        client = MongoClient(uri, tls=True, tlsCAFile=certifi.where())
+        db = client[db_name]
+        return db[coll_name]
+    except Exception as e:
+        raise RuntimeError(f"Failed to connect to MongoDB: {e}")
 
 def _agg(coll, pipeline):
     """Aggregate with disk spill enabled."""
@@ -159,8 +161,8 @@ def elhub_available_years(price_area: str):
 
 @st.cache_data(show_spinner=True)
 def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
-    """Load Elhub production for (area, year)."""
-    coll = _get_mongo_collection()
+    """Load Elhub PRODUCTION for (area, year)."""
+    coll = _get_mongo_collection()  # your production collection
     pipeline = [
         {"$match": {"priceArea": price_area}},
         {"$project": {
@@ -189,6 +191,11 @@ def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
         }},
     ]
     rows = _agg(coll, pipeline)
+    return _normalize_elhub_df(rows, value_col_name="production")
+
+
+def _normalize_elhub_df(rows, value_col_name: str) -> pd.DataFrame:
+    """Internal helper to normalize Elhub docs into a common tidy DF."""
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -198,8 +205,7 @@ def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
         .dt.tz_convert("Europe/Oslo")
         .dt.tz_localize(None)
     )
-    df["production"] = pd.to_numeric(df["production"], errors="coerce")
+    df[value_col_name] = pd.to_numeric(df[value_col_name], errors="coerce")
     df["group"] = df["group"].astype(str).str.strip().str.replace("_", " ").str.title()
-
-    df = df.dropna(subset=["time", "production"]).sort_values("time")
-    return df[["time", "area", "group", "production"]]
+    df = df.dropna(subset=["time", value_col_name]).sort_values("time")
+    return df[["time", "area", "group", value_col_name]]

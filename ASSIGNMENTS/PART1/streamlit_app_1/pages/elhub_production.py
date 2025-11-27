@@ -38,8 +38,15 @@ def render(section: str):
 
     # Weather download for the selected area (2021)
     row = AREAS_DF[AREAS_DF["area"] == area].iloc[0]
-    with st.spinner(f"Downloading ERA5 hourly weather for {row.city} (2021) from Open-Meteo..."):
-        wx = get_era5_hourly(row.lat, row.lon, 2021)
+    try:
+        with st.spinner(f"Downloading ERA5 hourly weather for {row.city} (2021) from Open-Meteo..."):
+            wx = get_era5_hourly(row.lat, row.lon, 2021)
+    except Exception as e:
+        st.error("Could not download weather data from Open-Meteo.")
+        with st.expander("Technical details"):
+            st.exception(e)
+        return
+    
     st.session_state.wx2021 = wx
     st.success(f"Downloaded {len(wx)} rows for {row.city} / {area} (2021).")
 
@@ -79,7 +86,7 @@ def render(section: str):
             elif px is not None:
                 fig = px.pie(pie_df, names="productionGroup", values="quantityKwh", title=None)
                 fig = style_plotly(fig, section)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             else:
                 st.dataframe(pie_df, use_container_width=True)
             st.caption(f"Year: **{DASHBOARD_YEAR}**")
@@ -125,7 +132,7 @@ def render(section: str):
                     fig2 = px.line(trend_df, x="date", y="quantityKwh", color="productionGroup")
                     fig2.update_layout(xaxis_title="Date", yaxis_title="Daily Total (kWh)")
                     fig2 = style_plotly(fig2, section)
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.plotly_chart(fig2, width="stretch")
                 else:
                     st.line_chart(
                         trend_df.pivot(index="date", columns="productionGroup", values="quantityKwh")

@@ -26,7 +26,11 @@ def render(section: str):
     year = st.selectbox("Year", years, index=years.index(default_year))
 
     with st.spinner(f"Loading Elhub production for {area} in {year} …"):
-        prod_df = load_elhub_for_area(area, year)
+        try:
+            prod_df = load_elhub_for_area(area, year)
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            return
 
     if prod_df.empty:
         st.warning(f"No production data for {area} in {year}. Try another year.")
@@ -52,7 +56,7 @@ def render(section: str):
             trend=int(trend), robust=robust
         )
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with tab2:
         st.subheader("Spectrogram")
@@ -67,7 +71,7 @@ def render(section: str):
             window_len=int(window_len), overlap=float(overlap)
         )
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with st.expander("Data info"):
         st.write(f"Area: **{area}**  •  Year: **{year}**  •  Rows: **{len(prod_df):,}**")

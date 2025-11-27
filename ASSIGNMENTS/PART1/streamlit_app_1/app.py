@@ -9,13 +9,12 @@ from pages import (
     elhub_timeseries,
     weather_overview,
     weather_anomalies,
+    snow_drift_page, 
+    met_energy_corr,
+    price_area_map,
+    energy_forecast, 
     meta_about,
 )
-
-APP_VERSION = "v-2025-11-26-01"  # change this every time you deploy
-
-st.sidebar.write("APP VERSION:", APP_VERSION)
-
 
 # Page config
 st.set_page_config(page_title="IND320 • Open-Meteo + Elhub", layout="wide")
@@ -50,11 +49,23 @@ elif section == "Elhub – Production" and page == "Production Dashboard":
 elif section == "Elhub – Production" and page == "Production Time Series":
     elhub_timeseries.render(section)
 
+elif section == "Elhub – Production" and page == "Energy Forecast (SARIMAX)":
+    energy_forecast.render(section)
+
 elif section == "Open-Meteo – Weather" and page == "Weather Overview":
     weather_overview.render(section)
 
 elif section == "Open-Meteo – Weather" and page == "Weather Anomalies":
     weather_anomalies.render(section)
+
+elif section == "Open-Meteo – Weather" and page == "Snow Drift":
+    snow_drift_page.render(section)
+
+elif section == "Open-Meteo – Weather" and page == "Met–Energy Correlation":
+    met_energy_corr.render(section)
+
+elif section == "Maps" and page == "Price Area Map":
+    price_area_map.render(section)
 
 elif section == "Meta" and page == "About":
     meta_about.render(section)

@@ -3,8 +3,9 @@ import streamlit as st
 
 SECTIONS = {
     "Overview": ["Home"],
-    "Elhub – Production": ["Production Dashboard", "Production Time Series"],
-    "Open-Meteo – Weather": ["Weather Overview", "Weather Anomalies"],
+    "Elhub – Production": ["Production Dashboard", "Production Time Series","Energy Forecast (SARIMAX)",],
+    "Maps": ["Price Area Map"], 
+    "Open-Meteo – Weather": ["Weather Overview", "Weather Anomalies","Snow Drift","Met–Energy Correlation"],
     "Meta": ["About"],
 }
 
@@ -12,7 +13,8 @@ SECTIONS = {
 SECTION_COLORS = {
     "Overview": "#2b6777",
     "Elhub – Production": "#ae7be9",   
-    "Open-Meteo – Weather": "#2e7d32",
+    "Open-Meteo – Weather": "#93cbd1",
+    "Maps": "#5f9462",
     "Meta": "#9c27b0",
 }
 
@@ -23,13 +25,17 @@ SECTION_THEMES = {
         "sidebar_bg": "#146783",
     },
     "Elhub – Production": {
-        # MUCH more visible yellow/orange theme
-        "bg": "linear-gradient(135deg, #f2d9fa 0%, #ffe082 60%)",
-        "sidebar_bg": "#9122db",
+        
+        "bg": "linear-gradient(135deg, #f2d9fa 0%, #ffffff 60%)",
+        "sidebar_bg": "#710392",
     },
     "Open-Meteo – Weather": {
+        "bg": "linear-gradient(135deg, #93cbd1 0%, #ffffff 60%)",
+        "sidebar_bg": "#5E88A5",
+    },
+    "Maps": {
         "bg": "linear-gradient(135deg, #e8f5e9 0%, #ffffff 60%)",
-        "sidebar_bg": "#1b5e20",
+        "sidebar_bg": "#074d0c",
     },
     "Meta": {
         "bg": "linear-gradient(135deg, #fce4ec 0%, #ffffff 60%)",
@@ -60,7 +66,7 @@ def apply_section_theme(section: str):
 
         /* SIDEBAR TEXT COLOR */
         [data-testid="stSidebar"] * {{
-            color: #999999 !important;
+            color: #FFFFFF !important;
         }}
 
         /* HEADERS */
@@ -98,17 +104,25 @@ def section_badge(label: str, section: str):
 
 
 def style_plotly(fig, section: str):
-    """Apply section accent color to Plotly charts."""
+    """Apply section accent color to Plotly charts + transparent background."""
     accent = SECTION_COLORS.get(section, "#444")
     fig.update_layout(
         title_font=dict(color=accent),
-        xaxis=dict(title_font=dict(color=accent), tickfont=dict(color="#333")),
-        yaxis=dict(title_font=dict(color=accent), tickfont=dict(color="#333")),
+        xaxis=dict(
+            title_font=dict(color=accent),
+            tickfont=dict(color="#333"),
+        ),
+        yaxis=dict(
+            title_font=dict(color=accent),
+            tickfont=dict(color="#333"),
+        ),
         legend=dict(
             title_font=dict(color=accent),
             font=dict(color="#333"),
         ),
-        paper_bgcolor="rgba(255,255,255,0.9)",
-        plot_bgcolor="rgba(255,255,255,0.85)",
+        # 🔑 remove the white box:
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     return fig
+

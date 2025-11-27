@@ -22,13 +22,18 @@ def render(section: str):
         c1, c2 = st.columns(2)
         dct_cutoff = c1.slider("DCT cutoff (fraction)", 0.0, 0.2, 0.02, 0.005)
         n_sigma = c2.slider("Sigma multiplier", 1.0, 6.0, 3.5, 0.1)
-        fig, out_df, summary_df = spc_outliers_temperature(
+        try:
+            fig, out_df, summary_df = spc_outliers_temperature(
             wx,
             dct_cutoff=float(dct_cutoff),
             n_sigma=float(n_sigma),
-        )
+            )
+        except Exception as e:
+            st.error(f"Error computing SPC outliers: {e}")
+            return
+        
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         st.write("Summary:", summary_df)
         st.write("Outlier samples:", out_df.head(50))
 
@@ -37,12 +42,17 @@ def render(section: str):
         c1, c2 = st.columns(2)
         contamination = c1.slider("Expected outlier proportion", 0.001, 0.1, 0.01, 0.001)
         n_neighbors = c2.slider("LOF neighbors", 10, 80, 35, 1)
-        fig, anoms_df, summary_df = lof_precip_anomalies(
-            wx,
-            contamination=float(contamination),
-            n_neighbors=int(n_neighbors),
-        )
+        try:
+            fig, anoms_df, summary_df = lof_precip_anomalies(
+                wx,
+                contamination=float(contamination),
+                n_neighbors=int(n_neighbors),
+            )
+        except Exception as e:
+            st.error(f"Error computing LOF anomalies: {e}")
+            return
+        
         fig = style_plotly(fig, section)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         st.write("Summary:", summary_df)
         st.write("Anomaly samples:", anoms_df.head(50))

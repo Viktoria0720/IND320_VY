@@ -28,6 +28,10 @@ def stl_decompose_production(prod_df, area, group,
     if df.empty:
         raise ValueError(f"No production for {area}/{group}")
     y = pd.Series(df["production"].to_numpy(float), index=pd.to_datetime(df["time"]))
+    if len(y) < period * 2:
+        raise ValueError(
+            f"Not enough data points ({len(y)}) for STL with period={period}."
+        )
     res = STL(y, period=period, seasonal=seasonal, trend=trend, robust=robust).fit()
     comp_df = pd.DataFrame(
         {"observed": y, "trend": res.trend, "seasonal": res.seasonal, "resid": res.resid},
@@ -148,6 +152,12 @@ def lof_precip_anomalies(df, contamination=0.01, n_neighbors=35):
     if go is None:
         raise RuntimeError("Plotly not available.")
     sub = df[["timestamp", "precipitation"]].dropna().copy()
+    if sub.empty:
+        raise ValueError("No precipitation data.")
+    if len(sub) <= n_neighbors:
+        raise ValueError(
+            f"Not enough data points ({len(sub)}) for LOF with n_neighbors={n_neighbors}."
+        )
     y = sub["precipitation"].to_numpy(float).reshape(-1, 1)
     lof = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
     labels = lof.fit_predict(y)
