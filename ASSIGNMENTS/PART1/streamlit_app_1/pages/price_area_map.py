@@ -1,6 +1,5 @@
 # pages/price_area_map.py
 import json
-import os
 from pathlib import Path
 from datetime import date, timedelta
 
@@ -15,8 +14,6 @@ from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
 from core.geo_helpers import get_energy_groups, mean_energy_by_area
 from core.elhub_energy import load_area_energy_series
-import core.elhub_energy as elhub_energy
-from core.mongo_elhub import _get_mongo_collection
 
 # Folder of THIS file (pages/price_area_map.py)
 HERE = Path(__file__).resolve().parent
@@ -51,57 +48,6 @@ def render(section: str):
     apply_section_theme(section)
     section_badge("Maps", section)
     st.title("Price Area Map – Production / Consumption Overview")
-    # --- Elhub / Mongo connection panel ---
-    with st.expander("Elhub / Mongo connection (enter credentials for this session)", expanded=False):
-        st.write("If your Elhub data isn't available, paste a Mongo URI and collection names here to use for this Streamlit session. Values are stored only in the running app's environment.")
-        with st.form(key="elhub_conn_form"):
-            uri_in = st.text_input("Mongo URI (leave blank to use existing secrets/env)")
-            db_in = st.text_input("Mongo DB name (optional)")
-            prod_coll_in = st.text_input("Production collection name (optional)")
-            cons_coll_in = st.text_input("Consumption collection name (optional)")
-            submit = st.form_submit_button("Apply and reload")
-            if submit:
-                # Set environment vars for this process so core.elhub_energy will pick them up
-                if uri_in:
-                    os.environ["MONGO_URI"] = uri_in
-                if db_in:
-                    os.environ["MONGO_DB"] = db_in
-                if prod_coll_in:
-                    os.environ["MONGO_PROD_COLL"] = prod_coll_in
-                if cons_coll_in:
-                    os.environ["MONGO_CONS_COLL"] = cons_coll_in
-
-                # Clear cached Streamlit resources so new env vars are used
-                try:
-                    st.cache_data.clear()
-                except Exception:
-                    pass
-                try:
-                    st.cache_resource.clear()
-                except Exception:
-                    pass
-
-                st.success("Applied connection overrides to the running session. Rerunning to pick up changes...")
-                st.experimental_rerun()
-
-        if st.button("Test connection (no changes)"):
-            # Try connecting the same way other pages do (single collection via core.mongo_elhub)
-            try:
-                coll = _get_mongo_collection()
-                count = coll.estimated_document_count()
-                st.success(f"Connected. Collection ~{count:,} documents (via core.mongo_elhub)")
-            except Exception as e:
-                # Fallback: try the elhub_energy helper that returns prod/cons collections
-                try:
-                    prod_coll, cons_coll = elhub_energy._get_elhub_collections()
-                    prod_count = prod_coll.estimated_document_count()
-                    cons_count = cons_coll.estimated_document_count()
-                    st.success(f"Connected (fallback). Production ~{prod_count:,}; Consumption ~{cons_count:,}")
-                except Exception as e2:
-                    st.error("Connection test failed. Check MONGO_URI / secrets and try Apply.")
-                    with st.expander("Error details"):
-                        st.exception(e2)
-
     # 2) Load GeoJSON
     try:
         geojson_data = load_geojson()
@@ -189,62 +135,6 @@ def render(section: str):
         # area codes in mean_df use e.g. 'NO1' -> convert feature code 'NO 1' to 'NO1' for lookup
         lookup_code = code.replace(" ", "")
         feat["properties"]["mean_value"] = geo_mean_map.get(lookup_code, None)
-
-    # Diagnostics expander to help debug why Production may show no-data
-    with st.expander("Diagnostics: production vs consumption (helpful for debugging)", expanded=False):
-        try:
-            prod_coll, cons_coll = elhub_energy._get_elhub_collections()
-            st.write("Production collection documents:", prod_coll.estimated_document_count())
-            st.write("Consumption collection documents:", cons_coll.estimated_document_count())
-        except Exception as e:
-            try:
-                coll = _get_mongo_collection()
-                st.write("Single collection documents:", coll.estimated_document_count())
-            except Exception as e2:
-                st.warning("Could not fetch collection counts for diagnostics.")
-
-        # Show how many areas ended up with zero mean
-        try:
-            zeros = int((mean_df["mean_value"] == 0).sum())
-            total_areas = int(mean_df.shape[0])
-            st.write(f"Areas with no data (mean == 0): {zeros} / {total_areas}")
-        except Exception:
-            pass
-
-        # If user selected Production, inspect raw and normalized group values in the production collection
-        if data_type == "Production":
-            try:
-                # Query a small sample in the time window to inspect raw group values
-                # Convert start/end to UTC datetimes (like loader does)
-                s_oslo = start_ts.tz_localize("Europe/Oslo")
-                e_oslo = end_ts.tz_localize("Europe/Oslo")
-                s_utc = s_oslo.tz_convert("UTC").to_pydatetime()
-                e_utc = e_oslo.tz_convert("UTC").to_pydatetime()
-
-                sample_cursor = prod_coll.find({
-                    "startTime": {"$gte": s_utc, "$lt": e_utc}
-                }, {"_id": 0, "priceArea": 1, "productionGroup": 1}).limit(500)
-                sample = list(sample_cursor)
-                st.write(f"Sample production docs in interval (showing up to 50): {len(sample)}")
-                if sample:
-                    # Show a small table of raw productionGroup values
-                    sample_df = pd.DataFrame(sample)
-                    if "productionGroup" in sample_df:
-                        sample_df_preview = sample_df[["priceArea", "productionGroup"]].head(50)
-                        st.dataframe(sample_df_preview)
-
-                        # Show distinct raw groups and normalized groups
-                        raw_groups = [g for g in sample_df["productionGroup"].dropna().unique().tolist()]
-                        norm_groups = [elhub_energy._normalize_group_name(g) for g in raw_groups]
-                        st.write("Distinct raw productionGroup (sample):", raw_groups[:20])
-                        st.write("Normalized (sample):", norm_groups[:20])
-                    else:
-                        st.info("No 'productionGroup' field found in sample documents.")
-                else:
-                    st.info("No production documents found in the selected interval (sample query returned 0 rows).")
-            except Exception as e:
-                st.exception(e)
-
 
     # Map internal 'NO1' → GeoJSON 'NO 1'
     mean_df = mean_df.copy()
