@@ -3,8 +3,8 @@ import pandas as pd
 import streamlit as st
 
 from core.constants import AREAS_DF
-from core.mongo_elhub import _normalize_elhub_df  # if it's not exported, we'll re-implement normalisation
-from core.elhub_energy import load_area_energy_series, _get_elhub_collections, _normalize_group_name
+from core.elhub_energy import load_area_energy_series, _get_elhub_collections
+
 
 AREA_CODES = AREAS_DF["area"].tolist()
 
@@ -12,24 +12,24 @@ AREA_CODES = AREAS_DF["area"].tolist()
 @st.cache_data(show_spinner=True)
 def get_production_groups() -> list[str]:
     """
-    Return a sorted list of production groups (normalised) from the production collection.
+    Return a sorted list of *raw* production groups from the production collection.
     """
     coll_prod, _ = _get_elhub_collections()
     raw_groups = coll_prod.distinct("productionGroup")
-    groups = [_normalize_group_name(g) for g in raw_groups if g is not None]
-    # Deduplicate after normalisation
-    return sorted(set(groups))
+    groups = [g for g in raw_groups if g is not None]
+    return sorted(groups)
 
 
 @st.cache_data(show_spinner=True)
 def get_consumption_groups() -> list[str]:
     """
-    Return a sorted list of consumption groups (normalised) from the consumption collection.
+    Return a sorted list of *raw* consumption groups from the consumption collection.
     """
     _, coll_cons = _get_elhub_collections()
     raw_groups = coll_cons.distinct("consumptionGroup")
-    groups = [_normalize_group_name(g) for g in raw_groups if g is not None]
-    return sorted(set(groups))
+    groups = [g for g in raw_groups if g is not None]
+    return sorted(groups)
+
 
 
 @st.cache_data(show_spinner=True)

@@ -282,7 +282,7 @@ def render(section: str):
         st.error("End year must be ≥ start year.")
         return
 
-    # 3) Button → do the actual work
+    # 3) Button to compute snow drift
     if st.button("Compute snow drift", type="primary"):
         progress = st.progress(0.0)
         status = st.empty()

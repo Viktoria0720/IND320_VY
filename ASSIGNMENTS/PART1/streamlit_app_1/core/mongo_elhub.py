@@ -162,7 +162,7 @@ def elhub_available_years(price_area: str):
 @st.cache_data(show_spinner=True)
 def load_elhub_for_area(price_area: str, year: int) -> pd.DataFrame:
     """Load Elhub PRODUCTION for (area, year)."""
-    coll = _get_mongo_collection()  # your production collection
+    coll = _get_mongo_collection()  
     pipeline = [
         {"$match": {"priceArea": price_area}},
         {"$project": {

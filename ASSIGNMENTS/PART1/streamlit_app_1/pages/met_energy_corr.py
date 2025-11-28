@@ -145,7 +145,7 @@ def render(section: str):
             ),
         )
 
-    # --- 4. Button – everything below is inside this block -------------------
+    # --- 4. Button  -------------------
     if st.button("Compute sliding correlation", type="primary"):
         # 4a. Load energy series from Mongo
         with st.spinner("Loading Elhub energy series from Mongo …"):
@@ -201,7 +201,7 @@ def render(section: str):
         energy_sub = energy_df.copy()
         energy_sub["time"] = pd.to_datetime(energy_sub["time"])
 
-        # Ensure one energy value per hour (e.g. sum if duplicates)
+        # Ensure one energy value per hour 
         energy_sub = (
             energy_sub.groupby("time", as_index=False)["kwh"]
             .sum()
@@ -212,7 +212,7 @@ def render(section: str):
             wx_sub,
             energy_sub,
             on="time",
-            how="inner",   # no validate, since we enforced uniqueness ourselves
+            how="inner",   
         )
 
         if merged.empty:

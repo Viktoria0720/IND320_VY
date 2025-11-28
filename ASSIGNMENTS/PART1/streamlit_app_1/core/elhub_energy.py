@@ -22,13 +22,6 @@ def _normalize_group_name(g: str) -> str:
 
 @st.cache_resource(show_spinner=False)
 def _get_mongo_client() -> MongoClient:
-    """
-    Shared Mongo client.
-    Priority:
-    1. st.secrets["mongo"]["uri"]
-    2. MONGO_URI env var
-    3. mongodb://localhost:27017
-    """
     uri = ""
 
     if "mongo" in st.secrets:
@@ -84,10 +77,10 @@ def load_area_energy_series(
     Load hourly energy series for one price area + group in [start_ts, end_ts).
 
     Uses:
-      - elhub_production_2021_2024  (for Production)
+      - elhub_production_2021  (for Production)
       - elhub_consumption_2021_2024 (for Consumption)
 
-    Returns a tidy DataFrame with columns ['time', 'kwh'] in local (Oslo) time.
+    Returns a tidy DataFrame with columns ['time', 'kwh'] in local time.
     """
     coll_prod, coll_cons = _get_elhub_collections()
     coll = coll_prod if energy_type == "Production" else coll_cons
@@ -101,8 +94,7 @@ def load_area_energy_series(
     start_utc = start_oslo.tz_convert("UTC")
     end_utc = end_oslo.tz_convert("UTC")
 
-    # 👈 IMPORTANT: only filter by area + time in Mongo.
-    # Group filtering is done in Python after normalisation.
+    
     query = {
         "priceArea": area,
         "startTime": {"$gte": start_utc.to_pydatetime(), "$lt": end_utc.to_pydatetime()},

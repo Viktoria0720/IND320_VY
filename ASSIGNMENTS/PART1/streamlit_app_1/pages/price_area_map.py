@@ -16,8 +16,6 @@ from core.elhub_energy import load_area_energy_series
 
 # Folder of THIS file (pages/price_area_map.py)
 HERE = Path(__file__).resolve().parent
-
-# If file.geojson lives next to app.py one level up from pages/
 GEOJSON_PATH = HERE.parent / "file.geojson"
 GEOJSON_AREA_PROP = "ElSpotOmr"
 
@@ -56,7 +54,7 @@ def render(section: str):
         st.info("Download the NVE Elspot areas as GeoJSON and save it to that path.")
         return
 
-    # 3) Global area selection (we reuse the same area as other pages)
+    # 3) Global area selection 
     area_codes = AREAS_DF["area"].tolist()
     default_area = st.session_state.get("area", "NO5")
     if default_area not in area_codes:
@@ -155,9 +153,8 @@ def render(section: str):
 
     # 8) Add outline layer with highlight for chosen area
     def style_function(feature):
-        code = feature["properties"].get(GEOJSON_AREA_PROP)  # e.g. "NO 1"
-        chosen_code = _area_to_feature_code(chosen_area)     # "NO1" → "NO 1"
-
+        code = feature["properties"].get(GEOJSON_AREA_PROP)  
+        chosen_code = _area_to_feature_code(chosen_area)     
         if code == chosen_code:
             return {
                 "fillOpacity": 0.0,
@@ -199,9 +196,9 @@ def render(section: str):
     try:
         with st.spinner("Loading energy data for the chosen area …"):
             energy_df = load_area_energy_series(
-                energy_type=data_type,         # "Production" / "Consumption"
-                area=chosen_area,              # from your area selectbox
-                group=selected_group,          # from "Energy group" selectbox
+                energy_type=data_type,         
+                area=chosen_area,             
+                group=selected_group,          
                 start_ts=start_ts,
                 end_ts=end_ts,
             )

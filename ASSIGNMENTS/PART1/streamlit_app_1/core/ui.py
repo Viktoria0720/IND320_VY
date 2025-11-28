@@ -13,7 +13,7 @@ SECTIONS = {
 SECTION_COLORS = {
     "Overview": "#2b6777",
     "Elhub – Production": "#66293d",   
-    "Open-Meteo – Weather": "#93cbd1",
+    "Open-Meteo – Weather": "#5E88A5",
     "Maps": "#86e7b8",
     "Meta": "#9c27b0",
 }
@@ -120,7 +120,7 @@ def style_plotly(fig, section: str):
             title_font=dict(color=accent),
             font=dict(color="#333"),
         ),
-        # 🔑 remove the white box:
+        
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
