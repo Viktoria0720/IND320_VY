@@ -198,6 +198,24 @@ def render(section: str):
     # 6) Map setup
     st.subheader("Map")
 
+    # Style function used by GeoJson layers (defined before we create layers)
+    def style_function(feature):
+        code = feature.get("properties", {}).get(GEOJSON_AREA_PROP)  # e.g. "NO 1"
+        chosen_code = _area_to_feature_code(chosen_area)     # "NO1" → "NO 1"
+
+        if code == chosen_code:
+            return {
+                "fillOpacity": 0.0,
+                "color": "#000000",
+                "weight": 3,
+            }
+        else:
+            return {
+                "fillOpacity": 0.0,
+                "color": "#444444",
+                "weight": 1,
+            }
+
     # Remember last clicked point across reruns
     if "last_clicked" not in st.session_state:
         st.session_state.last_clicked = None
@@ -254,23 +272,6 @@ def render(section: str):
         ).add_to(m)
 
     # 8) Add outline layer with highlight for chosen area
-    def style_function(feature):
-        code = feature["properties"].get(GEOJSON_AREA_PROP)  # e.g. "NO 1"
-        chosen_code = _area_to_feature_code(chosen_area)     # "NO1" → "NO 1"
-
-        if code == chosen_code:
-            return {
-                "fillOpacity": 0.0,
-                "color": "#000000",
-                "weight": 3,
-            }
-        else:
-            return {
-                "fillOpacity": 0.0,
-                "color": "#444444",
-                "weight": 1,
-            }
-
     folium.GeoJson(
         geojson_data,
         name="outlines",
