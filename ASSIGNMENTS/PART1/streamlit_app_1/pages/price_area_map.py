@@ -190,6 +190,61 @@ def render(section: str):
         lookup_code = code.replace(" ", "")
         feat["properties"]["mean_value"] = geo_mean_map.get(lookup_code, None)
 
+    # Diagnostics expander to help debug why Production may show no-data
+    with st.expander("Diagnostics: production vs consumption (helpful for debugging)", expanded=False):
+        try:
+            prod_coll, cons_coll = elhub_energy._get_elhub_collections()
+            st.write("Production collection documents:", prod_coll.estimated_document_count())
+            st.write("Consumption collection documents:", cons_coll.estimated_document_count())
+        except Exception as e:
+            try:
+                coll = _get_mongo_collection()
+                st.write("Single collection documents:", coll.estimated_document_count())
+            except Exception as e2:
+                st.warning("Could not fetch collection counts for diagnostics.")
+
+        # Show how many areas ended up with zero mean
+        try:
+            zeros = int((mean_df["mean_value"] == 0).sum())
+            total_areas = int(mean_df.shape[0])
+            st.write(f"Areas with no data (mean == 0): {zeros} / {total_areas}")
+        except Exception:
+            pass
+
+        # If user selected Production, inspect raw and normalized group values in the production collection
+        if data_type == "Production":
+            try:
+                # Query a small sample in the time window to inspect raw group values
+                # Convert start/end to UTC datetimes (like loader does)
+                s_oslo = start_ts.tz_localize("Europe/Oslo")
+                e_oslo = end_ts.tz_localize("Europe/Oslo")
+                s_utc = s_oslo.tz_convert("UTC").to_pydatetime()
+                e_utc = e_oslo.tz_convert("UTC").to_pydatetime()
+
+                sample_cursor = prod_coll.find({
+                    "startTime": {"$gte": s_utc, "$lt": e_utc}
+                }, {"_id": 0, "priceArea": 1, "productionGroup": 1}).limit(500)
+                sample = list(sample_cursor)
+                st.write(f"Sample production docs in interval (showing up to 50): {len(sample)}")
+                if sample:
+                    # Show a small table of raw productionGroup values
+                    sample_df = pd.DataFrame(sample)
+                    if "productionGroup" in sample_df:
+                        sample_df_preview = sample_df[["priceArea", "productionGroup"]].head(50)
+                        st.dataframe(sample_df_preview)
+
+                        # Show distinct raw groups and normalized groups
+                        raw_groups = [g for g in sample_df["productionGroup"].dropna().unique().tolist()]
+                        norm_groups = [elhub_energy._normalize_group_name(g) for g in raw_groups]
+                        st.write("Distinct raw productionGroup (sample):", raw_groups[:20])
+                        st.write("Normalized (sample):", norm_groups[:20])
+                    else:
+                        st.info("No 'productionGroup' field found in sample documents.")
+                else:
+                    st.info("No production documents found in the selected interval (sample query returned 0 rows).")
+            except Exception as e:
+                st.exception(e)
+
 
     # Map internal 'NO1' → GeoJSON 'NO 1'
     mean_df = mean_df.copy()
