@@ -12,12 +12,12 @@ SECTIONS = {
 # Accent colors (badges, titles, plot accents)
 SECTION_COLORS = {
     "Overview": "#2b6777",
-    "Elhub – Production": "#ae7be9",   
+    "Elhub – Production": "#66293d",   
     "Open-Meteo – Weather": "#93cbd1",
-    "Maps": "#5f9462",
+    "Maps": "#86e7b8",
     "Meta": "#9c27b0",
 }
-
+ 
 # Background / sidebar themes
 SECTION_THEMES = {
     "Overview": {
@@ -26,8 +26,8 @@ SECTION_THEMES = {
     },
     "Elhub – Production": {
         
-        "bg": "linear-gradient(135deg, #f2d9fa 0%, #ffffff 60%)",
-        "sidebar_bg": "#710392",
+        "bg": "linear-gradient(135deg, #dca8b8 0%, #f9f0f3 60%)",
+        "sidebar_bg": "#b74f6f",
     },
     "Open-Meteo – Weather": {
         "bg": "linear-gradient(135deg, #93cbd1 0%, #ffffff 60%)",
