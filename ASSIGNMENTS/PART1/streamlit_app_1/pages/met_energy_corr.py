@@ -160,7 +160,11 @@ def render(section: str):
                         )
                         return
 
-                    df_group = prod_df[prod_df["group"] == energy_group].copy()
+                    # Case-insensitive
+                    df_group = prod_df[
+                        prod_df["group"].astype(str).str.strip().str.lower()
+                        == str(energy_group).strip().lower()
+                    ].copy()
                     if df_group.empty:
                         st.warning(
                             f"No production data found for area {area}, "
