@@ -1,5 +1,6 @@
 # pages/price_area_map.py
 import json
+import os
 from pathlib import Path
 from datetime import date, timedelta
 
@@ -13,6 +14,8 @@ from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
 from core.geo_helpers import get_energy_groups, mean_energy_by_area
 from core.elhub_energy import load_area_energy_series
+import core.elhub_energy as elhub_energy
+from core.mongo_elhub import _get_mongo_collection
 
 # Folder of THIS file (pages/price_area_map.py)
 HERE = Path(__file__).resolve().parent
@@ -47,6 +50,56 @@ def render(section: str):
     apply_section_theme(section)
     section_badge("Maps", section)
     st.title("Price Area Map – Production / Consumption Overview")
+    # --- Elhub / Mongo connection panel ---
+    with st.expander("Elhub / Mongo connection (enter credentials for this session)", expanded=False):
+        st.write("If your Elhub data isn't available, paste a Mongo URI and collection names here to use for this Streamlit session. Values are stored only in the running app's environment.")
+        with st.form(key="elhub_conn_form"):
+            uri_in = st.text_input("Mongo URI (leave blank to use existing secrets/env)")
+            db_in = st.text_input("Mongo DB name (optional)")
+            prod_coll_in = st.text_input("Production collection name (optional)")
+            cons_coll_in = st.text_input("Consumption collection name (optional)")
+            submit = st.form_submit_button("Apply and reload")
+            if submit:
+                # Set environment vars for this process so core.elhub_energy will pick them up
+                if uri_in:
+                    os.environ["MONGO_URI"] = uri_in
+                if db_in:
+                    os.environ["MONGO_DB"] = db_in
+                if prod_coll_in:
+                    os.environ["MONGO_PROD_COLL"] = prod_coll_in
+                if cons_coll_in:
+                    os.environ["MONGO_CONS_COLL"] = cons_coll_in
+
+                # Clear cached Streamlit resources so new env vars are used
+                try:
+                    st.cache_data.clear()
+                except Exception:
+                    pass
+                try:
+                    st.cache_resource.clear()
+                except Exception:
+                    pass
+
+                st.success("Applied connection overrides to the running session. Rerunning to pick up changes...")
+                st.experimental_rerun()
+
+        if st.button("Test connection (no changes)"):
+            # Try connecting the same way other pages do (single collection via core.mongo_elhub)
+            try:
+                coll = _get_mongo_collection()
+                count = coll.estimated_document_count()
+                st.success(f"Connected. Collection ~{count:,} documents (via core.mongo_elhub)")
+            except Exception as e:
+                # Fallback: try the elhub_energy helper that returns prod/cons collections
+                try:
+                    prod_coll, cons_coll = elhub_energy._get_elhub_collections()
+                    prod_count = prod_coll.estimated_document_count()
+                    cons_count = cons_coll.estimated_document_count()
+                    st.success(f"Connected (fallback). Production ~{prod_count:,}; Consumption ~{cons_count:,}")
+                except Exception as e2:
+                    st.error("Connection test failed. Check MONGO_URI / secrets and try Apply.")
+                    with st.expander("Error details"):
+                        st.exception(e2)
 
     # 2) Load GeoJSON
     try:
