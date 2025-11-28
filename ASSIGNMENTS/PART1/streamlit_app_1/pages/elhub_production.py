@@ -81,6 +81,8 @@ def render(section: str):
                         ],
                     )
                     .properties(height=360)
+                    .configure_view(stroke=None, fill="transparent")
+                    .configure(background="transparent")
                 )
                 st.altair_chart(chart, use_container_width=True)
             elif px is not None:
@@ -126,6 +128,8 @@ def render(section: str):
                             ],
                         )
                         .properties(height=360)
+                        .configure_view(stroke=None, fill="transparent")
+                        .configure(background="transparent")
                     )
                     st.altair_chart(line, use_container_width=True)
                 elif px is not None:
