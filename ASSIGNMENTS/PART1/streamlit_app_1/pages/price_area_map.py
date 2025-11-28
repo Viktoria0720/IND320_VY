@@ -188,7 +188,7 @@ def render(section: str):
             data=mean_df,
             columns=["geo_code", "mean_value"],
             key_on=f"feature.properties.{GEOJSON_AREA_PROP}",
-            fill_color="YlOrRd",
+            fill_color="BuGn",
             threshold_scale=threshold_scale,
             fill_opacity=0.65,
             line_opacity=0.2,
@@ -213,7 +213,7 @@ def render(section: str):
                 sticky=False,
                 toLocaleString=False,
             ),
-            highlight_function=lambda x: {"weight": 3, "color": "#666"},
+            highlight_function=lambda x: {"weight": 2, "color": "#666"},
         ).add_to(m)
 
     # 8) Add outline layer with highlight for chosen area
