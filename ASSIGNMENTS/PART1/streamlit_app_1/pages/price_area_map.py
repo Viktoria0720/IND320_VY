@@ -9,6 +9,7 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import plotly.express as px
+import numpy as np
 
 from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
@@ -174,6 +175,21 @@ def render(section: str):
             st.exception(e)
         return
 
+    # Ensure numeric and handle zeros (no-data) separately so the choropleth shows transparent areas
+    mean_df = mean_df.copy()
+    mean_df["mean_value"] = pd.to_numeric(mean_df.get("mean_value", 0.0), errors="coerce").fillna(0.0)
+
+    # Attach mean values to GeoJSON features so tooltips can display the numeric mean
+    geo_mean_map = {row["area"]: float(row["mean_value"]) for _, row in mean_df.iterrows()}
+    for feat in geojson_data.get("features", []):
+        code = feat.get("properties", {}).get(GEOJSON_AREA_PROP)
+        if code is None:
+            feat["properties"]["mean_value"] = None
+            continue
+        # area codes in mean_df use e.g. 'NO1' -> convert feature code 'NO 1' to 'NO1' for lookup
+        lookup_code = code.replace(" ", "")
+        feat["properties"]["mean_value"] = geo_mean_map.get(lookup_code, None)
+
 
     # Map internal 'NO1' → GeoJSON 'NO 1'
     mean_df = mean_df.copy()
@@ -192,19 +208,50 @@ def render(section: str):
     # 7) Choropleth coloring of areas (transparent-ish)
     # We map area → mean_value
     if not mean_df.empty:
+        # Prepare a colour scale based on non-zero means (quantiles)
+        vals = mean_df["mean_value"].replace(0, np.nan).dropna()
+        threshold_scale = None
+        if not vals.empty:
+            try:
+                qs = np.quantile(vals, [0.0, 0.25, 0.5, 0.75, 1.0])
+                # Ensure monotonic unique thresholds for folium
+                threshold_scale = sorted(list({float(x) for x in qs}))
+            except Exception:
+                threshold_scale = None
+
         choropleth = folium.Choropleth(
             geo_data=geojson_data,
             name="mean_values",
             data=mean_df,
-            columns=["geo_code", "mean_value"],   # use geo_code
-            key_on=f"feature.properties.{GEOJSON_AREA_PROP}",  # "ElSpotOmr"
+            columns=["geo_code", "mean_value"],
+            key_on=f"feature.properties.{GEOJSON_AREA_PROP}",
             fill_color="YlOrRd",
-            fill_opacity=0.6,   # transparent-ish
+            threshold_scale=threshold_scale,
+            fill_opacity=0.65,
             line_opacity=0.2,
             highlight=True,
             legend_name=f"Mean {data_type.lower()} ({selected_group})",
         )
         choropleth.add_to(m)
+
+        # Add a GeoJson layer with tooltips that include the mean value
+        def _fmt_mean(mv):
+            return f"{mv:,.1f} kWh" if mv is not None and not pd.isna(mv) else "No data"
+
+        folium.GeoJson(
+            geojson_data,
+            name="labels",
+            style_function=style_function,
+            tooltip=folium.GeoJsonTooltip(
+                fields=[GEOJSON_AREA_PROP, "mean_value"],
+                aliases=["Area:", f"Mean {data_type} (kWh):"],
+                localize=True,
+                labels=True,
+                sticky=False,
+                toLocaleString=False,
+            ),
+            highlight_function=lambda x: {"weight": 3, "color": "#666"},
+        ).add_to(m)
 
     # 8) Add outline layer with highlight for chosen area
     def style_function(feature):
