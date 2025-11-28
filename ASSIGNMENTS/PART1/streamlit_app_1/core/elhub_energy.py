@@ -76,11 +76,9 @@ def load_area_energy_series(
     """
     Load hourly energy series for one price area + group in [start_ts, end_ts).
 
-    Uses:
-      - elhub_production_2021  (for Production)
-      - elhub_consumption_2021_2024 (for Consumption)
-
-    Returns a tidy DataFrame with columns ['time', 'kwh'] in local time.
+    Uses an aggregation pipeline that converts string timestamps to dates so the
+    function works regardless of whether `startTime` is stored as BSON date
+    or as ISO strings.
     """
     coll_prod, coll_cons = _get_elhub_collections()
     coll = coll_prod if energy_type == "Production" else coll_cons
@@ -91,57 +89,57 @@ def load_area_energy_series(
     # Convert naive Oslo times to UTC for querying 'startTime'
     start_oslo = start_ts.tz_localize("Europe/Oslo")
     end_oslo = end_ts.tz_localize("Europe/Oslo")
-    start_utc = start_oslo.tz_convert("UTC")
-    end_utc = end_oslo.tz_convert("UTC")
-
-    
-    query = {
-        "priceArea": area,
-        "startTime": {"$gte": start_utc.to_pydatetime(), "$lt": end_utc.to_pydatetime()},
-    }
+    start_utc = start_oslo.tz_convert("UTC").to_pydatetime()
+    end_utc = end_oslo.tz_convert("UTC").to_pydatetime()
 
     try:
-        docs = list(
-            coll.find(
-                query,
-                {
-                    "_id": 0,
-                    "startTime": 1,
-                    "quantityKwh": 1,
-                    raw_group_field: 1,
-                },
-            )
-        )
-    except Exception as e:
-        raise RuntimeError(f"Mongo query failed for {energy_type} / {area} / {group}."
-        ) from e
-    
-    docs = list(
-        coll.find(
-            query,
-            {
+        pipeline = [
+            {"$match": {"priceArea": area}},
+            {"$project": {
                 "_id": 0,
                 "startTime": 1,
                 "quantityKwh": 1,
                 raw_group_field: 1,
-            },
-        )
-    )
+            }},
+            {"$addFields": {
+                "time_dt": {
+                    "$cond": [
+                        {"$eq": [{"$type": "$startTime"}, "date"]},
+                        "$startTime",
+                        {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}},
+                    ]
+                }
+            }},
+            {"$match": {"time_dt": {"$ne": None}}},
+            {"$match": {"$expr": {"$and": [
+                {"$gte": ["$time_dt", start_utc]},
+                {"$lt": ["$time_dt", end_utc]}
+            ]}}},
+        ]
+
+        docs = list(coll.aggregate(pipeline, allowDiskUse=True))
+    except Exception as e:
+        raise RuntimeError(f"Mongo aggregation failed for {energy_type} / {area} / {group}.") from e
 
     if not docs:
         return pd.DataFrame(columns=["time", "kwh"])
+    
 
     df = pd.DataFrame(docs)
 
-    # Time handling (local Oslo, no tz)
-    df["time"] = (
-        pd.to_datetime(df["startTime"], utc=True, errors="coerce")
-        .dt.tz_convert("Europe/Oslo")
-        .dt.tz_localize(None)
-    )
+    # Time handling (local Oslo, no tz). Prefer the aggregated 'time_dt' if present.
+    if "time_dt" in df.columns:
+        df["time"] = pd.to_datetime(df["time_dt"], utc=True, errors="coerce")
+    else:
+        df["time"] = pd.to_datetime(df["startTime"], utc=True, errors="coerce")
+
+    df["time"] = df["time"].dt.tz_convert("Europe/Oslo").dt.tz_localize(None)
 
     # Normalise group names to match the UI
-    df["group"] = df[raw_group_field].apply(_normalize_group_name)
+    if raw_group_field in df.columns:
+        df["group"] = df[raw_group_field].apply(_normalize_group_name)
+    else:
+        df["group"] = None
 
     df["kwh"] = pd.to_numeric(df["quantityKwh"], errors="coerce")
     df = df.dropna(subset=["time", "kwh", "group"]).sort_values("time")
