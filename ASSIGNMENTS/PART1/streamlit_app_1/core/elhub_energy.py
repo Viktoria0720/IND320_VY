@@ -145,7 +145,14 @@ def load_area_energy_series(
     df = df.dropna(subset=["time", "kwh", "group"]).sort_values("time")
 
     # Filter by group *after* normalisation
-    df = df[df["group"] == group]
+    # Use a case-insensitive, whitespace-robust comparison to match UI selections
+    try:
+        group_norm = str(group).strip().lower()
+        df["_group_norm"] = df["group"].astype(str).str.strip().str.lower()
+        df = df[df["_group_norm"] == group_norm]
+        df = df.drop(columns=["_group_norm"])
+    except Exception:
+        df = df[df["group"] == group]
 
     # Extra time guard
     mask = (df["time"] >= start_ts) & (df["time"] < end_ts)
