@@ -13,7 +13,7 @@ import numpy as np
 from core.constants import AREAS_DF
 from core.ui import section_badge, apply_section_theme, style_plotly
 from core.geo_helpers import get_energy_groups, mean_energy_by_area
-from core.elhub_energy import load_area_energy_series
+from core.elhub_energy import load_area_energy_series, _get_elhub_collections
 
 # Folder of THIS file (pages/price_area_map.py)
 HERE = Path(__file__).resolve().parent
@@ -260,6 +260,43 @@ def render(section: str):
             "No energy data found for this combination "
             f"({data_type}, {selected_group}, {chosen_area}, {start_ts.date()}–{end_ts.date()})."
         )
+        # Temporary debug expander (can be removed once the issue is diagnosed)
+        with st.expander("Debug: inspect collection for this area/time (temporary)"):
+            try:
+                prod_coll, cons_coll = _get_elhub_collections()
+                coll = prod_coll if data_type == "Production" else cons_coll
+
+                s_oslo = start_ts.tz_localize("Europe/Oslo")
+                e_oslo = end_ts.tz_localize("Europe/Oslo")
+                s_utc = s_oslo.tz_convert("UTC")
+                e_utc = e_oslo.tz_convert("UTC")
+
+                pipeline = [
+                    {"$match": {"priceArea": chosen_area}},
+                    {"$project": {"_id": 0, "startTime": 1, "productionGroup": 1, "consumptionGroup": 1}},
+                    {"$addFields": {"time_dt": {"$cond": [
+                        {"$eq": [{"$type": "$startTime"}, "date"]},
+                        "$startTime",
+                        {"$dateFromString": {"dateString": "$startTime", "onError": None, "onNull": None}},
+                    ]}}},
+                    {"$match": {"time_dt": {"$ne": None}}},
+                    {"$match": {"$expr": {"$and": [
+                        {"$gte": ["$time_dt", s_utc.to_pydatetime()]},
+                        {"$lt": ["$time_dt", e_utc.to_pydatetime()]}
+                    ]}}},
+                    {"$group": {"_id": "$productionGroup", "count": {"$sum": 1}}},
+                    {"$limit": 100},
+                ]
+
+                sample = list(coll.aggregate(pipeline, allowDiskUse=True))
+                st.write("Matching production-group buckets in interval (up to 100):")
+                if sample:
+                    sample_df = pd.DataFrame(sample)
+                    st.dataframe(sample_df, use_container_width=True)
+                else:
+                    st.info("No matching documents found (aggregation returned 0 groups).")
+            except Exception as e:
+                st.exception(e)
     else:
         total_kwh = float(energy_df["kwh"].sum())
         mean_kwh = float(energy_df["kwh"].mean())
